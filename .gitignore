@@ -16,3 +16,10 @@ uploads/
 backend/app/uploads/
 backend/*.db
 backend/*.sqlite3
+
+# ML datasets and trained weights -- never committed. ml/data/client_validation
+# in particular holds real patient photographs extracted from client-supplied
+# records; ml/data/kaggle holds the downloaded public dataset (large, and
+# redistributable only under Kaggle's own terms, not ours to commit).
+ml/data/
+ml/artifacts/
