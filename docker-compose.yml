@@ -6,13 +6,13 @@ services:
       POSTGRES_USER: oral_cancer
       POSTGRES_PASSWORD: oral_cancer_dev
     ports:
-      # Host-side 5433, not 5432: a machine may already run a native Postgres
+      # Host-side 5434, not 5432: a machine may already run a native Postgres
       # on the default port, which silently intercepts container traffic
       # rather than erroring, since Windows lets Docker's proxy bind
       # alongside it. This only affects host->container access from a
       # locally-run uvicorn; the api container still reaches this one at
       # db:5432 over the internal compose network, unaffected by host ports.
-      - "5433:5432"
+      - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
