@@ -22,5 +22,6 @@ backend/*.sqlite3
 # records; ml/data/kaggle holds the downloaded public dataset (large, and
 # redistributable only under Kaggle's own terms, not ours to commit).
 ml/data/
-ml/artifacts/
+ml/artifacts/*
+!ml/artifacts/model_card.md
 .claude/
