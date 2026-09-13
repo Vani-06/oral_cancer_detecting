@@ -60,16 +60,23 @@ async def upload_prediction(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    message = (
+        "Image uploaded successfully. Inference is pending model configuration."
+        if prediction.is_pending
+        else "Image uploaded and analyzed successfully."
+    )
+
     return PredictionUploadResponse(
         prediction_id=prediction.prediction_id,
         filename=prediction.filename,
         status="uploaded",
-        message="Image uploaded successfully. Inference is pending model configuration.",
+        message=message,
         created_at=prediction.created_at.isoformat(),
         image_url=f"/uploads/{prediction.filename}" if prediction.filename else None,
-        prediction="Pending",
-        confidence=0.0,
-        is_pending_inference=True,
+        prediction=prediction.prediction or "Pending",
+        confidence=prediction.confidence or 0.0,
+        heatmap_url=f"/uploads/heatmaps/{prediction.heatmap_path}" if prediction.heatmap_path else None,
+        is_pending_inference=prediction.is_pending,
     )
 
 
