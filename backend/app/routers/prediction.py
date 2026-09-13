@@ -10,6 +10,7 @@ from app.dependencies.auth import get_current_user
 from app.models import Prediction, Report, User
 from app.schemas.prediction import PredictionDetail, PredictionHistoryItem, PredictionUploadResponse
 from app.services.prediction_service import PredictionService
+from app.services.report_service import generate_report_pdf
 
 router = APIRouter(tags=["predictions"])
 
@@ -116,37 +117,8 @@ def download_report(
         raise HTTPException(status_code=400, detail="Report not available until inference completes")
     if record.report is None:
         report_dir = Path(settings.UPLOAD_DIR) / "reports"
-        report_dir.mkdir(parents=True, exist_ok=True)
         report_path = report_dir / f"{record.prediction_id}.pdf"
-        # Keep report generation dependency-free. This is a plain PDF with a
-        # clear non-diagnostic disclaimer until clinical reporting is reviewed.
-        lines = [
-            "Oral lesion analysis report",
-            f"Prediction: {record.prediction or 'Pending'}",
-            f"Confidence: {record.confidence or 0:.2f}",
-            "This software is an investigational aid, not a diagnosis.",
-            "Clinical examination and histopathology remain required.",
-        ]
-        content = "BT\n/F1 12 Tf\n72 740 Td\n" + "\n".join(
-            f"({line.replace('(', '[').replace(')', ']')}) Tj 0 -22 Td" for line in lines
-        ) + "\nET"
-        objects = [
-            "<< /Type /Catalog /Pages 2 0 R >>",
-            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
-            f"<< /Length {len(content.encode())} >>\nstream\n{content}\nendstream",
-            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-        ]
-        pdf = "%PDF-1.4\n"
-        offsets = [0]
-        for index, obj in enumerate(objects, 1):
-            offsets.append(len(pdf.encode()))
-            pdf += f"{index} 0 obj\n{obj}\nendobj\n"
-        xref = len(pdf.encode())
-        pdf += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n"
-        pdf += "".join(f"{offset:010d} 00000 n \n" for offset in offsets[1:])
-        pdf += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF"
-        report_path.write_bytes(pdf.encode())
+        generate_report_pdf(record, report_path)
         record.report = Report(pdf_path=str(report_path))
         db.commit()
     report_path = Path(record.report.pdf_path)
