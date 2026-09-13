@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import Prediction, Report, User
+from app.services.inference_service import inference_service
 
 
 class PredictionService:
@@ -84,6 +85,25 @@ class PredictionService:
         self.db.add(prediction)
         self.db.commit()
         self.db.refresh(prediction)
+
+        # Inference runs synchronously, after the record is committed, so a
+        # slow or failing model never blocks the upload itself from being
+        # recorded. If no model is configured (inference_service.enabled is
+        # False), the record stays Pending exactly as before real inference
+        # existed -- this is the deliberate fallback path, not an error.
+        if inference_service.enabled:
+            heatmap_filename = f"{prediction.prediction_id}.png"
+            heatmap_path = self.upload_dir / "heatmaps" / heatmap_filename
+            label, confidence = inference_service.predict(
+                image_path=self.upload_dir / filename,
+                heatmap_output_path=heatmap_path,
+            )
+            prediction.prediction = label
+            prediction.confidence = confidence
+            prediction.heatmap_path = heatmap_filename
+            self.db.commit()
+            self.db.refresh(prediction)
+
         return prediction
 
     def list_predictions(self, user: User) -> list[Prediction]:

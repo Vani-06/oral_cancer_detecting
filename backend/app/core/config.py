@@ -37,6 +37,14 @@ class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'oral_cancer.db'}")
     AUTO_CREATE_TABLES: bool = os.getenv("AUTO_CREATE_TABLES", "true").lower() == "true"
 
+    # Optional: path to a trained resnet50_oral_cancer.pt checkpoint (see
+    # ml/scripts/train.py). When unset or the file is missing, predictions
+    # stay in the Pending state exactly as before real inference existed --
+    # this is a deliberate fallback, not an error, so local dev and any
+    # environment without the (large, model-specific) weights file keeps
+    # working.
+    MODEL_PATH: str | None = os.getenv("MODEL_PATH") or None
+
     CORS_ORIGINS_RAW: str = os.getenv(
         "CORS_ORIGINS",
         '["http://localhost:5173", "http://localhost:3000"]',
