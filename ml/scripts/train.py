@@ -103,13 +103,25 @@ def main():
     parser.add_argument("--epochs", type=int, default=15)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument(
+        "--train-dir", type=Path, default=DATA_DIR / "train",
+        help="ImageFolder-style directory to train on (default: Kaggle-only split)",
+    )
+    parser.add_argument(
+        "--val-dir", type=Path, default=DATA_DIR / "val",
+        help="ImageFolder-style directory to validate on (default: Kaggle-only split)",
+    )
+    parser.add_argument(
+        "--checkpoint-name", default="resnet50_oral_cancer.pt",
+        help="Output filename under ml/artifacts/ (default overwrites the base checkpoint)",
+    )
     args = parser.parse_args()
 
     device = torch.device("cpu")
     train_tf, eval_tf = build_transforms()
 
-    train_ds = datasets.ImageFolder(DATA_DIR / "train", transform=train_tf)
-    val_ds = datasets.ImageFolder(DATA_DIR / "val", transform=eval_tf)
+    train_ds = datasets.ImageFolder(args.train_dir, transform=train_tf)
+    val_ds = datasets.ImageFolder(args.val_dir, transform=eval_tf)
 
     # ImageFolder assigns class indices alphabetically -- confirm it matches
     # what evaluate.py / the backend inference service will assume.
@@ -132,7 +144,7 @@ def main():
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     log_rows = []
     best_val_acc = 0.0
-    best_path = ARTIFACTS_DIR / "resnet50_oral_cancer.pt"
+    best_path = ARTIFACTS_DIR / args.checkpoint_name
 
     for epoch in range(1, args.epochs + 1):
         t0 = time.time()
@@ -166,7 +178,8 @@ def main():
             )
             print(f"  -> new best (val_acc={val_acc:.3f}), saved to {best_path}")
 
-    with (ARTIFACTS_DIR / "training_log.csv").open("w", newline="") as f:
+    log_name = f"training_log_{args.checkpoint_name.replace('.pt', '')}.csv"
+    with (ARTIFACTS_DIR / log_name).open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(log_rows[0].keys()))
         writer.writeheader()
         writer.writerows(log_rows)

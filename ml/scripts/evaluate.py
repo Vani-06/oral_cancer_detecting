@@ -14,10 +14,18 @@ separately -- never blended into one number:
    the ambiguous cases most likely to trip up a model trained only on Kaggle's
    cleaner cancer/non-cancer split.
 
+IMPORTANT: --client-eval-dir must point at data genuinely untouched by this
+checkpoint's training run. Evaluating against client_validation/ after some
+of those same images were folded into training (see
+prepare_combined_training.py) would be leaked, dishonest data -- use
+client_holdout/ for any checkpoint trained on the combined set.
+
 Usage:
     .venv/Scripts/python.exe scripts/evaluate.py
+    .venv/Scripts/python.exe scripts/evaluate.py --checkpoint artifacts/resnet50_oral_cancer_v2.pt --client-eval-dir data/client_holdout
 """
 
+import argparse
 import csv
 from pathlib import Path
 
@@ -33,13 +41,11 @@ from torchvision import transforms
 from torchvision.models import resnet50
 
 ML_DIR = Path(__file__).resolve().parent.parent
-CHECKPOINT_PATH = ML_DIR / "artifacts" / "resnet50_oral_cancer.pt"
 KAGGLE_TEST_DIR = ML_DIR / "data" / "kaggle_split" / "test"
-CLIENT_VAL_DIR = ML_DIR / "data" / "client_validation"
 
 
-def load_model():
-    checkpoint = torch.load(CHECKPOINT_PATH, map_location="cpu", weights_only=False)
+def load_model(checkpoint_path: Path):
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     model = resnet50(weights=None)
     model.fc = torch.nn.Linear(model.fc.in_features, 2)
     model.load_state_dict(checkpoint["state_dict"])
@@ -125,22 +131,35 @@ def load_kaggle_test():
     return pairs
 
 
-def load_client_validation():
-    manifest_path = CLIENT_VAL_DIR / "manifest.csv"
+def load_client_set(client_dir: Path):
+    manifest_path = client_dir / "manifest.csv"
     pairs = []
     with manifest_path.open(newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            image = Image.open(CLIENT_VAL_DIR / row["filename"]).convert("RGB")
+            image = Image.open(client_dir / row["filename"]).convert("RGB")
             pairs.append((image, row["label"]))
     return pairs
 
 
 def main():
-    if not CHECKPOINT_PATH.is_file():
-        print(f"No checkpoint found at {CHECKPOINT_PATH}. Run train.py first.")
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--checkpoint", type=Path,
+        default=ML_DIR / "artifacts" / "resnet50_oral_cancer.pt",
+    )
+    parser.add_argument(
+        "--client-eval-dir", type=Path,
+        default=ML_DIR / "data" / "client_validation",
+        help="Must be data NOT used in this checkpoint's training (see module docstring).",
+    )
+    args = parser.parse_args()
+
+    if not args.checkpoint.is_file():
+        print(f"No checkpoint found at {args.checkpoint}. Run train.py first.")
         return
 
-    model, tf, class_to_idx = load_model()
+    model, tf, class_to_idx = load_model(args.checkpoint)
+    print(f"Evaluating checkpoint: {args.checkpoint}")
 
     if KAGGLE_TEST_DIR.is_dir():
         pairs = load_kaggle_test()
@@ -149,15 +168,15 @@ def main():
     else:
         print(f"Skipping Kaggle test set -- not found at {KAGGLE_TEST_DIR}")
 
-    if (CLIENT_VAL_DIR / "manifest.csv").is_file():
-        pairs = load_client_validation()
+    if (args.client_eval_dir / "manifest.csv").is_file():
+        pairs = load_client_set(args.client_eval_dir)
         y_true, y_pred, y_score = predict_batch(model, tf, class_to_idx, pairs)
         report(
-            "Client external validation (real clinical photos, mostly precancerous)",
+            f"Client evaluation ({args.client_eval_dir.name}, real clinical photos)",
             y_true, y_pred, y_score, warn_on_single_class=True,
         )
     else:
-        print(f"Skipping client validation set -- not found at {CLIENT_VAL_DIR}")
+        print(f"Skipping client eval set -- not found at {args.client_eval_dir}")
 
 
 if __name__ == "__main__":
