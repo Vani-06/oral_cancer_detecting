@@ -1,7 +1,9 @@
-# resnet50_oral_cancer.pt -- Model Card
+# resnet50_oral_cancer.pt / resnet50_oral_cancer_v2.pt -- Model Card
 
-**Status: NOT deployed to the live backend. `MODEL_PATH` is intentionally left
-unset.** See "Critical limitation" below -- this is the reason.
+**Status: NEITHER checkpoint is deployed to the live backend. `MODEL_PATH` is
+intentionally left unset.** v2 is a large, real improvement over v1 (round
+1), but is not yet accurate enough on real client photos to deploy. See
+"Round 2" below.
 
 ## Architecture
 
@@ -87,28 +89,81 @@ client's own real photos, it would flag genuine precancerous conditions as
 cancer roughly 6 times out of 7. That is worse than the current honest
 "Pending" state, which at least does not mislead.
 
-## Plausible next steps (not yet attempted)
+## Round 2 (resnet50_oral_cancer_v2.pt) -- client data folded into training
 
-- Include some client images directly in training/fine-tuning, not only
-  validation -- despite the tiny n and 98:1 class skew, this is likely the
-  single highest-leverage fix, since it would expose the model to the
-  client's actual photo domain during training rather than only at eval time.
-- Domain-appropriate augmentation during training (color/lighting jitter
-  matched to real clinical photo variation, not just mild jitter tuned for
-  Kaggle's own images).
-- A larger or more representative training set that includes precancerous
-  lesion photos as their own category, rather than binary
-  Kaggle-clean-Cancer-vs-Non-Cancer.
-- Investigate whether the saturation is specific to `layer4`+`fc` fine-tuning
-  (too little of the network adapted to the new domain) vs. a fundamentally
-  different training distribution problem -- worth a controlled comparison
-  before assuming more data alone fixes it.
+Direct response to round 1's domain-shift finding: the standard fix for a
+model that fails on real-world data despite good benchmark numbers is to
+expose training to that real-world domain, not just validate against it.
+
+Built via `ml/scripts/prepare_combined_training.py`. The client's 98
+Non-Cancer images were split three ways (58 train / 20 val / 20 holdout, seed
+42); the single Cancer image went to training, since a held-out sample of one
+would prove nothing statistically anyway. Combined training set: 689 images
+(328 Cancer, 361 Non-Cancer). Trained 15 epochs; best checkpoint at epoch 6.
+
+**The `client_holdout/` 20 images were never seen during round 2's training
+or validation.** They are the one honest measurement in this whole card.
+
+| | Round 1 (Kaggle-only) | Round 2 (client data folded in) |
+|---|---|---|
+| Kaggle test accuracy | 92.6% | 89.6% |
+| Kaggle false-Cancer-call rate (Non-Cancer) | 4.6% | 13.8% |
+| **Client false-Cancer-call rate** (holdout, real photos, default 0.5 threshold) | **85.7%** (84/98, full set) | **30.0%** (6/20, true holdout) |
+
+The Kaggle-side regression is the expected, acceptable cost of a model that's
+no longer overfit to Kaggle's specific photo style. The client-side
+improvement is large and real -- the score distribution on the holdout is
+now spread across the full 0-1 range (was saturated near 1.0 in round 1),
+confirming the fix addressed the actual mechanism, not just the symptom.
+
+**This is still not "highly accurate."** A 30% false-positive rate on real
+precancerous lesions is a genuine, substantial improvement, not a solved
+problem.
+
+### Threshold tuning -- tried, limited additional value
+
+Calibrated candidate thresholds against the 20-image client *validation* set
+(disjoint from the holdout, to avoid tuning against the same data used to
+measure success), then confirmed once on the holdout:
+
+| decision threshold | client false-positive rate | Kaggle cancer-detection sensitivity |
+|---|---|---|
+| 0.5 (default) | 30.0% (holdout) | 94.3% |
+| 0.7 | 20.0% (holdout) | 88.6% |
+| 0.9 | ~15% (val-projected) | 74.3% |
+
+Raising the threshold buys a modest false-positive reduction at a steep,
+monotonic cost to real cancer-detection sensitivity. There is no threshold
+that meaningfully fixes this without trading away the thing the model exists
+to do. **Not recommended as a substitute for more/better training data.**
+
+### What would actually move this further
+
+Every labeled client image (98 Non-Cancer + 1 Cancer) is now used somewhere
+in train/val/holdout -- there is no more labeled client data left to add.
+The two remaining levers both require more data, not more engineering:
+
+- **More confirmed-cancer client photos.** The single existing one is doing
+  as much work as it can. This is the single highest-leverage gap.
+- **Resolving the two loose, currently-unlabeled client image folders**
+  (`clinical images zip`, `histopath thesis images` -- see the main
+  project plan for why these couldn't be matched to the treatment
+  spreadsheet). If the client can supply whatever key connects them to a
+  diagnosis, that's up to 100 more real client-domain images.
+
+Secondary, lower-confidence options: domain-appropriate augmentation tuned to
+the client's actual photo conditions (lighting/color, not just Kaggle-style
+mild jitter), or a controlled comparison of how much of the network to
+unfreeze during fine-tuning.
 
 ## Reproducing
 
 ```
 ml/.venv/Scripts/python.exe scripts/prepare_kaggle.py
 ml/.venv/Scripts/python.exe scripts/prepare_client_validation.py <path-to-treatment-xlsx>
+ml/.venv/Scripts/python.exe scripts/prepare_combined_training.py
 ml/.venv/Scripts/python.exe scripts/train.py --epochs 15
-ml/.venv/Scripts/python.exe scripts/evaluate.py
+  --train-dir data/combined_train --val-dir data/combined_val
+  --checkpoint-name resnet50_oral_cancer_v2.pt
+ml/.venv/Scripts/python.exe scripts/evaluate.py --checkpoint artifacts/resnet50_oral_cancer_v2.pt --client-eval-dir data/client_holdout
 ```
