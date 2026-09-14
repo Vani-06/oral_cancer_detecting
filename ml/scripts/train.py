@@ -27,7 +27,7 @@ from pathlib import Path
 
 import torch
 from torch import nn, optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import datasets, transforms
 from torchvision.models import ResNet50_Weights, resnet50
 
@@ -39,13 +39,21 @@ IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
 
-def build_model() -> nn.Module:
+def build_model(unfreeze_layer3: bool = False) -> nn.Module:
     model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
 
     for param in model.parameters():
         param.requires_grad = False
     for param in model.layer4.parameters():
         param.requires_grad = True
+    if unfreeze_layer3:
+        # Deeper fine-tune: layer3 holds mid-level texture/color features.
+        # If the client's real photos differ from Kaggle's in exactly those
+        # terms (lighting, camera, compression), layer4-only fine-tuning may
+        # not be able to adapt far enough -- worth testing directly rather
+        # than assuming more data is the only lever left.
+        for param in model.layer3.parameters():
+            param.requires_grad = True
 
     model.fc = nn.Linear(model.fc.in_features, 2)  # Cancer / Non-Cancer
     return model
@@ -115,6 +123,22 @@ def main():
         "--checkpoint-name", default="resnet50_oral_cancer.pt",
         help="Output filename under ml/artifacts/ (default overwrites the base checkpoint)",
     )
+    parser.add_argument(
+        "--client-oversample-factor", type=float, default=1.0,
+        help=(
+            "Sampling weight multiplier for training images whose filename "
+            "starts with 'client_' (see prepare_combined_training.py). At "
+            "1.0 (default), every image is drawn with equal probability, so "
+            "client images -- ~11%% of the combined training set -- are "
+            "proportionally rare in every epoch's gradient signal. A factor "
+            "above 1.0 uses WeightedRandomSampler to draw them more often, "
+            "without duplicating any file on disk."
+        ),
+    )
+    parser.add_argument(
+        "--unfreeze-layer3", action="store_true",
+        help="Also fine-tune layer3, not just layer4+fc -- see build_model().",
+    )
     args = parser.parse_args()
 
     device = torch.device("cpu")
@@ -132,10 +156,26 @@ def main():
         "silently mislabeled."
     )
 
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
+    if args.client_oversample_factor != 1.0:
+        sample_paths = [s[0] for s in train_ds.samples]
+        weights = [
+            args.client_oversample_factor if Path(p).name.startswith("client_") else 1.0
+            for p in sample_paths
+        ]
+        n_client = sum(1 for p in sample_paths if Path(p).name.startswith("client_"))
+        print(
+            f"Client oversampling active: factor={args.client_oversample_factor}, "
+            f"{n_client}/{len(sample_paths)} training images are client-domain "
+            f"(effective share per epoch: "
+            f"{100 * n_client * args.client_oversample_factor / sum(weights):.1f}%)"
+        )
+        sampler = WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
+        train_loader = DataLoader(train_ds, batch_size=args.batch_size, sampler=sampler)
+    else:
+        train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False)
 
-    model = build_model().to(device)
+    model = build_model(unfreeze_layer3=args.unfreeze_layer3).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(
         [p for p in model.parameters() if p.requires_grad], lr=args.lr
