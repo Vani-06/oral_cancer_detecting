@@ -156,6 +156,37 @@ the client's actual photo conditions (lighting/color, not just Kaggle-style
 mild jitter), or a controlled comparison of how much of the network to
 unfreeze during fine-tuning.
 
+## Round 3 (resnet50_oral_cancer_v3.pt) -- oversampling + deeper unfreeze, negative result
+
+Tested two of the "secondary options" above together, still with zero new
+data: `layer3` unfrozen in addition to `layer4`+`fc` (more capacity to adapt
+mid-level texture/color features to the client's photo domain), plus
+`WeightedRandomSampler` oversampling client images 4x (raising their share of
+each epoch's draws from ~11% to ~27%). Same combined_train/val split as round
+2; `client_holdout/` still untouched.
+
+| | Round 2 | Round 3 |
+|---|---|---|
+| Kaggle test accuracy | 89.6% | **94.1%** (best yet) |
+| Kaggle false-Cancer-call rate | 13.8% | **4.6%** (best yet) |
+| **Client holdout false-Cancer-call rate** | **30.0%** | **35.0% (worse)** |
+
+**Worse on the metric that matters, better on the ones that don't.** Most
+likely explanation: Kaggle images still made up ~73% of every epoch's draws
+even at 4x client oversampling, and the added `layer3` capacity gave the
+model more room to fit that still-dominant distribution more precisely --
+the opposite of the intended effect. Extra capacity without a training mix
+that's actually client-dominant seems to make the domain-shift problem
+worse, not better.
+
+**resnet50_oral_cancer_v3.pt is not the recommended checkpoint. Round 2
+(resnet50_oral_cancer_v2.pt) remains the best result so far.** Two
+independent engineering attempts (retraining composition in round 2, then
+oversampling+capacity in round 3) have now been tried; round 2's 30% is where
+this stands until more client data is available. Further blind parameter
+search from here has a low expected return relative to the two real levers
+listed above (more confirmed-cancer photos, or the two unlabeled folders).
+
 ## Reproducing
 
 ```
