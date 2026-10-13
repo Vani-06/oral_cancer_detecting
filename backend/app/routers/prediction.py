@@ -1,18 +1,50 @@
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 import json
 from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.db import get_db
 from app.core.config import settings
+from app.db import get_db
 from app.dependencies.auth import get_current_user
 from app.models import Prediction, Report, User
-from app.schemas.prediction import PredictionDetail, PredictionHistoryItem, PredictionUploadResponse
+from app.schemas.prediction import (
+    PatientMetadata,
+    PredictionDetail,
+    PredictionHistoryItem,
+    PredictionUploadResponse,
+)
 from app.services.prediction_service import PredictionService
 from app.services.report_service import generate_report_pdf
 
 router = APIRouter(tags=["predictions"])
+
+
+def _report_url(record: Prediction) -> str | None:
+    # A report is generated on demand by GET /reports/{id}, so it is available
+    # as soon as the prediction itself is complete -- not only once a Report
+    # row already exists (which only happens after the first download, and
+    # the frontend disables the button when this is null).
+    return None if record.is_pending else f"/reports/{record.prediction_id}"
+
+
+def _parse_metadata(raw: str | None) -> dict | None:
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("metadata_json must be valid JSON") from exc
+    try:
+        return PatientMetadata.model_validate(data).model_dump(exclude_none=True)
+    except ValidationError as exc:
+        problems = "; ".join(
+            f"{'.'.join(str(p) for p in err['loc']) or 'metadata'}: {err['msg']}"
+            for err in exc.errors()
+        )
+        raise ValueError(f"Invalid patient metadata -- {problems}") from exc
 
 
 def _record_to_detail(record: Prediction) -> PredictionDetail:
@@ -21,7 +53,7 @@ def _record_to_detail(record: Prediction) -> PredictionDetail:
         prediction=record.prediction or "Pending",
         confidence=record.confidence or 0.0,
         heatmap_url=f"/uploads/heatmaps/{record.heatmap_path}" if record.heatmap_path else None,
-        pdf_url=f"/reports/{record.prediction_id}" if record.report else None,
+        pdf_url=_report_url(record),
         filename=record.filename,
         created_at=record.created_at.isoformat(),
         image_url=f"/uploads/{record.filename}" if record.filename else None,
@@ -49,14 +81,7 @@ async def upload_prediction(
 ) -> PredictionUploadResponse:
     service = PredictionService(db)
     try:
-        metadata = None
-        if metadata_json:
-            try:
-                metadata = json.loads(metadata_json)
-            except json.JSONDecodeError as exc:
-                raise ValueError("metadata_json must be valid JSON") from exc
-            if not isinstance(metadata, dict):
-                raise ValueError("metadata_json must contain a JSON object")
+        metadata = _parse_metadata(metadata_json)
         prediction = service.create_prediction(user=user, file=file, metadata=metadata)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -77,6 +102,7 @@ async def upload_prediction(
         prediction=prediction.prediction or "Pending",
         confidence=prediction.confidence or 0.0,
         heatmap_url=f"/uploads/heatmaps/{prediction.heatmap_path}" if prediction.heatmap_path else None,
+        pdf_url=_report_url(prediction),
         is_pending_inference=prediction.is_pending,
     )
 
@@ -115,13 +141,22 @@ def download_report(
         raise HTTPException(status_code=404, detail="Prediction not found")
     if record.is_pending:
         raise HTTPException(status_code=400, detail="Report not available until inference completes")
-    if record.report is None:
-        report_dir = Path(settings.UPLOAD_DIR) / "reports"
-        report_path = report_dir / f"{record.prediction_id}.pdf"
+
+    # Reports are derived artifacts: always written to REPORT_DIR (outside the
+    # public /uploads mount), and regenerated if the stored file is gone --
+    # e.g. an ephemeral container filesystem, or a row created before reports
+    # moved out of UPLOAD_DIR.
+    report_path = Path(settings.REPORT_DIR) / f"{record.prediction_id}.pdf"
+    if record.report is None or Path(record.report.pdf_path) != report_path or not report_path.is_file():
         generate_report_pdf(record, report_path)
-        record.report = Report(pdf_path=str(report_path))
+        if record.report is None:
+            record.report = Report(pdf_path=str(report_path))
+        else:
+            record.report.pdf_path = str(report_path)
         db.commit()
-    report_path = Path(record.report.pdf_path)
-    if not report_path.is_file():
-        raise HTTPException(status_code=404, detail="Report file not found")
-    return FileResponse(str(report_path), media_type="application/pdf", filename=report_path.name)
+
+    return FileResponse(
+        str(report_path),
+        media_type="application/pdf",
+        filename=f"oral-lesion-report-{record.prediction_id}.pdf",
+    )

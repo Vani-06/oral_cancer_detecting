@@ -92,7 +92,11 @@ class PredictionService:
         # False), the record stays Pending exactly as before real inference
         # existed -- this is the deliberate fallback path, not an error.
         if inference_service.enabled:
-            heatmap_filename = f"{prediction.prediction_id}.png"
+            # Random, like uploaded image names: the heatmap overlays the
+            # patient's photo and is served by the unauthenticated /uploads
+            # mount, so a sequential name ({prediction_id}.png) would let
+            # anyone enumerate every patient's image.
+            heatmap_filename = f"{uuid4().hex}.png"
             heatmap_path = self.upload_dir / "heatmaps" / heatmap_filename
             label, confidence = inference_service.predict(
                 image_path=self.upload_dir / filename,
