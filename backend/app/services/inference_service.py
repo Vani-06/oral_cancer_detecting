@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn.functional as F
-from PIL import Image
+from PIL import Image, ImageOps
 from torchvision import transforms
 from torchvision.models import resnet50
 
@@ -69,7 +69,11 @@ class InferenceService:
         """
         assert self._model is not None and self._transform is not None
 
-        image = Image.open(image_path).convert("RGB")
+        # Phone photos often store pixels sideways plus an EXIF "rotate" tag.
+        # Browsers honour the tag when displaying the original, so without
+        # this the model sees a rotated lesion and the heatmap overlay renders
+        # rotated relative to the photo next to it.
+        image = ImageOps.exif_transpose(Image.open(image_path)).convert("RGB")
         input_tensor = self._transform(image).unsqueeze(0)
 
         activations: dict[str, torch.Tensor] = {}
