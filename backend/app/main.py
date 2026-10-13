@@ -14,11 +14,16 @@ from app.routers.prediction import router as prediction_router
 async def lifespan(app: FastAPI):
     """Application startup/shutdown lifecycle."""
     settings.validate()
-    settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    (settings.UPLOAD_DIR / "heatmaps").mkdir(parents=True, exist_ok=True)
+    settings.REPORT_DIR.mkdir(parents=True, exist_ok=True)
     if settings.AUTO_CREATE_TABLES:
         Base.metadata.create_all(bind=engine)
     yield
+
+
+# Must exist before StaticFiles is constructed below, which happens at import
+# time -- well before lifespan runs. The directory is gitignored, so on a
+# fresh clone creating it only in lifespan made the app crash on import.
+(settings.UPLOAD_DIR / "heatmaps").mkdir(parents=True, exist_ok=True)
 
 
 app = FastAPI(

@@ -23,6 +23,12 @@ class Settings:
     APP_DIR: Path = BASE_DIR / "app"
 
     UPLOAD_DIR: Path = Path(os.getenv("UPLOAD_DIR", str(APP_DIR / "uploads")))
+    # Deliberately NOT under UPLOAD_DIR: everything there is served without
+    # authentication by the /uploads static mount, and a report contains
+    # patient metadata. Reports are only reachable via the authenticated
+    # GET /reports/{id} endpoint, and are regenerated if the file is missing,
+    # so this directory can safely be ephemeral.
+    REPORT_DIR: Path = Path(os.getenv("REPORT_DIR", str(BASE_DIR / "reports")))
     ALLOWED_EXTENSIONS: set[str] = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
     MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "10"))
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development").lower()
