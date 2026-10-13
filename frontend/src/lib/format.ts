@@ -1,8 +1,14 @@
 /** Display formatting helpers shared by the result page and history table. */
 
-/** 0.96 -> "96%" */
+/**
+ * 0.96 -> "96%". Model probabilities are never shown as 100% or 0%: rounding
+ * 0.998 up to "100%" would present a model output as certainty.
+ */
 export function formatPercent(value: number): string {
-  return `${Math.round(value * 100)}%`
+  const pct = Math.round(value * 100)
+  if (pct >= 100) return '>99%'
+  if (pct <= 0) return '<1%'
+  return `${pct}%`
 }
 
 export interface ConfidenceBand {
