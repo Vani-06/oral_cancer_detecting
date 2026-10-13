@@ -58,6 +58,8 @@ export interface PredictionOutcome extends Omit<PredictionResult, 'prediction'> 
   filename?: string
   /** Object URL or data URI for the source image, for previews and thumbnails. */
   image_url?: string
+  /** Patient metadata stored with the prediction (GET /predictions/{id}). */
+  metadata?: PatientMetadata | null
 }
 
 /** A history row plus the extras the table renders. */

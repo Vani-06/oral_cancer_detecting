@@ -114,6 +114,10 @@ function ResultView({
     )
   }
 
+  // Navigation state carries the form values right after an upload; on a
+  // reload or when opened from history, the server's stored copy is used.
+  const patientContext = metadata ?? outcome.metadata ?? undefined
+
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -181,13 +185,11 @@ function ResultView({
       )}
 
       <Card title="Patient context">
-        {metadata ? (
-          <MetadataSummary metadata={metadata} />
+        {patientContext ? (
+          <MetadataSummary metadata={patientContext} />
         ) : (
           <p className="text-sm text-slate-600">
-            No patient metadata is attached to this prediction. Metadata is
-            captured at upload time and is not stored on the server yet, so it is
-            unavailable on a reload or when opening a past analysis.
+            No patient metadata was recorded with this analysis.
           </p>
         )}
       </Card>
