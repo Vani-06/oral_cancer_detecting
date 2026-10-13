@@ -1,0 +1,12 @@
+# Training/evaluation environment -- separate from backend/.venv on purpose.
+# CPU-only torch builds (see backend/requirements.txt for the same reasoning).
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+torch==2.14.0
+torchvision==0.29.0
+numpy==2.5.2
+pillow==12.3.0
+scikit-learn==1.9.1
+scipy==1.18.1
+openpyxl==3.1.5
+kaggle==2.2.4
