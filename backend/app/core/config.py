@@ -50,6 +50,11 @@ class Settings:
     # environment without the (large, model-specific) weights file keeps
     # working.
     MODEL_PATH: str | None = os.getenv("MODEL_PATH") or None
+    # P(Cancer) at or above which a prediction is labelled Cancer. 0.5 is the
+    # plain argmax; lower values trade more false alarms for fewer missed
+    # cancers. Choose with the clinical team using the validation table in
+    # ml/artifacts/model_card.md -- never by tuning against held-out data.
+    CANCER_THRESHOLD: float = float(os.getenv("CANCER_THRESHOLD", "0.5"))
 
     CORS_ORIGINS_RAW: str = os.getenv(
         "CORS_ORIGINS",
@@ -72,6 +77,8 @@ class Settings:
             raise RuntimeError("SECRET_KEY must be set in production")
         if self.MAX_FILE_SIZE_MB <= 0:
             raise RuntimeError("MAX_FILE_SIZE_MB must be positive")
+        if not 0.0 < self.CANCER_THRESHOLD < 1.0:
+            raise RuntimeError("CANCER_THRESHOLD must be strictly between 0 and 1")
 
 
 settings = Settings()
