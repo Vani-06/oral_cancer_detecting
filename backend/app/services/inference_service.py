@@ -58,7 +58,8 @@ class InferenceService:
                 transforms.Normalize(checkpoint["mean"], checkpoint["std"]),
             ]
         )
-        self._idx_to_label = {v: k for k, v in checkpoint["class_to_idx"].items()}
+        self._label_to_idx: dict[str, int] = dict(checkpoint["class_to_idx"])
+        self._idx_to_label = {v: k for k, v in self._label_to_idx.items()}
         self.enabled = True
 
     def predict(self, image_path: Path, heatmap_output_path: Path) -> tuple[str, float]:
@@ -92,7 +93,15 @@ class InferenceService:
         try:
             output = self._model(input_tensor)
             probs = F.softmax(output, dim=1)[0]
-            predicted_idx = int(probs.argmax().item())
+            # The Cancer/Non-Cancer cut-off is a clinical operating-point
+            # decision (missed cancers vs. false alarms), not a fixed 0.5 --
+            # see the threshold table in ml/artifacts/model_card.md.
+            # Confidence is always the probability of the label returned.
+            cancer_idx = self._label_to_idx["Cancer"]
+            if probs[cancer_idx].item() >= settings.CANCER_THRESHOLD:
+                predicted_idx = cancer_idx
+            else:
+                predicted_idx = self._label_to_idx["Non-Cancer"]
             confidence = float(probs[predicted_idx].item())
 
             self._model.zero_grad()

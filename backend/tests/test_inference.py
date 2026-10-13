@@ -91,6 +91,15 @@ def test_report_regenerates_when_file_is_missing(client, auth, enabled_inference
     assert resp.status_code == 200 and resp.content.startswith(b"%PDF")
 
 
+def test_cancer_threshold_controls_the_label(client, auth, enabled_inference, monkeypatch):
+    monkeypatch.setattr(settings, "CANCER_THRESHOLD", 1e-9)
+    assert post(client, auth)["prediction"] == "Cancer"
+    monkeypatch.setattr(settings, "CANCER_THRESHOLD", 1 - 1e-9)
+    body = post(client, auth)
+    assert body["prediction"] == "Non-Cancer"
+    assert 0.0 <= body["confidence"] <= 1.0
+
+
 def test_exif_rotated_photo_heatmap_matches_upright_orientation(client, auth, enabled_inference):
     # Stored 320x240 with EXIF orientation 6 (rotate 90): displayed as 240x320.
     body = post(client, auth, content=jpeg_bytes(size=(320, 240), exif_orientation=6))
