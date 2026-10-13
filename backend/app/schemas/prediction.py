@@ -1,6 +1,7 @@
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # --- Auth schemas ---
@@ -46,6 +47,39 @@ class AuthResponse(BaseModel):
 
 
 # --- Prediction schemas ---
+
+class PatientMetadata(BaseModel):
+    """Server-side mirror of frontend/src/lib/metadataSchema.ts.
+
+    The frontend validates too, but the API is the boundary: without this,
+    any JSON object posted as metadata_json was stored as-is and printed into
+    the PDF report. Field names and ranges must stay identical to the
+    frontend schema and to PatientMetadata in frontend/src/api/types.ts.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    age: int = Field(ge=1, le=120)
+    sex: Literal["male", "female", "other"]
+    tobacco_use: bool
+    tobacco_type: Literal["smoked", "smokeless", "both"] | None = None
+    tobacco_years: int | None = Field(default=None, ge=0, le=100)
+    betel_quid_use: bool
+    alcohol_use: bool
+    lesion_site: Literal[
+        "buccal_mucosa", "tongue", "gingiva", "palate", "floor_of_mouth", "lip"
+    ]
+    lesion_duration_weeks: int = Field(ge=0, le=520)
+    pain: bool
+    bleeding: bool
+    prior_lesion_history: bool
+
+    @model_validator(mode="after")
+    def tobacco_follow_ups(self) -> "PatientMetadata":
+        if self.tobacco_use and (self.tobacco_type is None or self.tobacco_years is None):
+            raise ValueError("tobacco_type and tobacco_years are required when tobacco_use is true")
+        return self
+
 
 class PredictionUploadResponse(BaseModel):
     """Response returned after successfully uploading an image."""
