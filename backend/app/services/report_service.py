@@ -9,8 +9,10 @@ confidence -- not just text.
 
 from pathlib import Path
 
+from PIL import Image as PILImage, ImageOps, UnidentifiedImageError
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.units import inch
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from app.core.config import settings
@@ -27,18 +29,50 @@ DISCLAIMER = (
     "remain required for any diagnostic decision."
 )
 
+# Same labels as METADATA_FIELD_LABELS in frontend/src/lib/metadataSchema.ts.
+METADATA_LABELS = {
+    "age": "Age",
+    "sex": "Sex",
+    "tobacco_use": "Tobacco use",
+    "tobacco_type": "Tobacco type",
+    "tobacco_years": "Years of tobacco use",
+    "betel_quid_use": "Betel quid / areca nut",
+    "alcohol_use": "Alcohol use",
+    "lesion_site": "Lesion site",
+    "lesion_duration_weeks": "Lesion duration (weeks)",
+    "pain": "Pain",
+    "bleeding": "Bleeding",
+    "prior_lesion_history": "Prior oral lesion",
+}
 
-def _draw_image_fit(c: canvas.Canvas, path: Path, x: float, y: float) -> None:
+
+def _format_metadata_value(value: object) -> str:
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    return str(value).replace("_", " ").capitalize() if isinstance(value, str) else str(value)
+
+
+def _draw_image_fit(c: canvas.Canvas, path: Path, x: float, y: float) -> bool:
     """Draws an image scaled to fit within IMAGE_MAX_WIDTH x IMAGE_MAX_HEIGHT,
-    anchored at top-left (x, y is the TOP of the image box)."""
-    from PIL import Image as PILImage
+    anchored at top-left (x, y is the TOP of the image box). Returns whether
+    the image was actually drawn -- a report must still generate if a stored
+    file turns out to be missing or corrupt (partial write, disk issue), not
+    500 on what should be a routine PDF download."""
+    try:
+        with PILImage.open(path) as raw:
+            # Upright, as the browser shows it -- reportlab ignores EXIF
+            # orientation, so phone photos would otherwise print sideways.
+            im = ImageOps.exif_transpose(raw).convert("RGB")
+    except (OSError, UnidentifiedImageError):
+        c.setFont("Helvetica-Oblique", 9)
+        c.drawString(x, y - 0.2 * inch, "[image unavailable]")
+        return False
 
-    with PILImage.open(path) as im:
-        w, h = im.size
-
+    w, h = im.size
     scale = min(IMAGE_MAX_WIDTH / w, IMAGE_MAX_HEIGHT / h)
     draw_w, draw_h = w * scale, h * scale
-    c.drawImage(str(path), x, y - draw_h, width=draw_w, height=draw_h, preserveAspectRatio=True)
+    c.drawImage(ImageReader(im), x, y - draw_h, width=draw_w, height=draw_h, preserveAspectRatio=True)
+    return True
 
 
 def generate_report_pdf(prediction: Prediction, output_path: Path) -> None:
@@ -93,7 +127,8 @@ def generate_report_pdf(prediction: Prediction, output_path: Path) -> None:
         for key, value in prediction.metadata_json.items():
             if y < MARGIN + 0.8 * inch:
                 break  # leave room for the disclaimer rather than overflow the page
-            c.drawString(MARGIN, y, f"{key}: {value}")
+            label = METADATA_LABELS.get(key, key)
+            c.drawString(MARGIN, y, f"{label}: {_format_metadata_value(value)}")
             y -= 0.16 * inch
         y -= 0.2 * inch
 
