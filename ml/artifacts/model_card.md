@@ -1,9 +1,20 @@
-# resnet50_oral_cancer.pt / resnet50_oral_cancer_v2.pt -- Model Card
+# ResNet-50 Oral Lesion Classifier -- Model Card
 
-**Status: NEITHER checkpoint is deployed to the live backend. `MODEL_PATH` is
-intentionally left unset.** v2 is a large, real improvement over v1 (round
-1), but is not yet accurate enough on real client photos to deploy. See
-"Round 2" below.
+**Recommended checkpoint: `resnet50_oral_cancer_v4.pt` (round 4).** It is a
+research model, not a validated diagnostic device. Enable it only with the
+limitations in "Round 4" understood -- in particular, cancer-detection
+sensitivity on the client's own photos cannot be measured with the data
+available (one confirmed-cancer case).
+
+| Round | Client false-Cancer rate (held-out patients) | Kaggle accuracy | Kaggle cancer sensitivity |
+|---|---|---|---|
+| 1 (Kaggle only) | 85.7% (98 photos) | 92.6% | 90.0% |
+| 2 (+ spreadsheet photos) | 64.1% (39 photos, same 20 patients as round 4) | 89.6% | 92.9% |
+| 3 (+ oversampling, layer3) | 35.0% (20 spreadsheet photos only) | 94.1% | 92.9% |
+| **4 (+ folder photos, patient-level split)** | **12.8% (39 photos, 20 patients)** | 91.1% | **84.3%** |
+
+Rounds 2 and 4 are compared on the identical 20 held-out patients; earlier
+rounds were evaluated on different subsets and are indicative only.
 
 ## Architecture
 
@@ -145,11 +156,9 @@ The two remaining levers both require more data, not more engineering:
 
 - **More confirmed-cancer client photos.** The single existing one is doing
   as much work as it can. This is the single highest-leverage gap.
-- **Resolving the two loose, currently-unlabeled client image folders**
-  (`clinical images zip`, `histopath thesis images` -- see the main
-  project plan for why these couldn't be matched to the treatment
-  spreadsheet). If the client can supply whatever key connects them to a
-  diagnosis, that's up to 100 more real client-domain images.
+- ~~Resolving the two loose, currently-unlabeled client image folders~~ --
+  **superseded: the folders were labeled all along.** See "Round 4" for the
+  correction and how it was established.
 
 Secondary, lower-confidence options: domain-appropriate augmentation tuned to
 the client's actual photo conditions (lighting/color, not just Kaggle-style
@@ -179,22 +188,107 @@ the opposite of the intended effect. Extra capacity without a training mix
 that's actually client-dominant seems to make the domain-shift problem
 worse, not better.
 
-**resnet50_oral_cancer_v3.pt is not the recommended checkpoint. Round 2
-(resnet50_oral_cancer_v2.pt) remains the best result so far.** Two
-independent engineering attempts (retraining composition in round 2, then
-oversampling+capacity in round 3) have now been tried; round 2's 30% is where
-this stands until more client data is available. Further blind parameter
-search from here has a low expected return relative to the two real levers
-listed above (more confirmed-cancer photos, or the two unlabeled folders).
+**resnet50_oral_cancer_v3.pt is not recommended** (superseded by round 4).
+
+## Round 4 (resnet50_oral_cancer_v4.pt) -- both client photo sources, patient-level split
+
+### Correction: the "unlabeled" client folders are labeled
+
+Earlier rounds treated the folders `clinical images zip` (`N c p.jpeg`) and
+`histopath thesis images` (`N H.jpeg`) as unusable, because their clinical
+photos never matched the spreadsheet's embedded photos. That conclusion was
+incomplete. Comparing the **histopath** slides instead (rotation- and
+mirror-invariant correlation of normalised 16x16 grayscale descriptors):
+
+- 99 of 100 folder slides are pixel-identical to the spreadsheet's embedded
+  histopath image (correlation 1.000), and every one satisfies
+  **folder case N = spreadsheet row N+1**.
+- Case 12 is the single exception (correlation 0.085); its folder clinical
+  photo is excluded as unverified.
+- The folder clinical photos are *different photographs of the same lesions*
+  (no exact match, but colour similarity ranks the expected case well above
+  chance: median rank 30/100, top-10 for 23 of 99 cases vs ~10 by chance).
+
+Result (`prepare_client_cases.py`): **198 client photos from 100 patients**
+(99 spreadsheet + 99 verified folder photos; row 52 has only a folder photo).
+Histopathology: 24 mild, 39 moderate, 36 severe dysplasia, 1 carcinoma.
+
+### Training and evaluation
+
+`prepare_case_split.py` splits **by patient**, reusing round 2's exact
+patient assignment so the two rounds are compared on the identical 20
+held-out patients (now 39 photos). Train: Kaggle + 119 client photos; val:
+Kaggle + 40 client photos; holdout untouched. Round 2's configuration
+(`layer4` + `fc`, no oversampling), best checkpoint at epoch 9 (val 0.886).
+
+| Same 20 held-out patients, 39 photos | Round 2 | **Round 4** |
+|---|---|---|
+| Client false-Cancer rate | 64.1% (25/39) | **12.8% (5/39)** |
+| -- spreadsheet photos | 30.0% (6/20) | 10.0% (2/20) |
+| -- folder photos | 100% (19/19) | 15.8% (3/19) |
+
+| Kaggle test (n=135) | Round 2 | Round 4 |
+|---|---|---|
+| Accuracy | 89.6% | 91.1% |
+| False-Cancer rate | 13.8% | 1.5% |
+| **Cancer sensitivity** | **92.9%** | **84.3%** (11 of 70 missed) |
+
+Round 2's earlier 30% figure only covered spreadsheet photos; on folder
+photos -- a capture source it never saw -- it flagged every one. Round 4
+fixes that, at the cost of being more conservative on Kaggle cancers.
+
+### Remaining false positives track dysplasia severity
+
+| Held-out histopathology | Called "Cancer" (round 4) |
+|---|---|
+| Mild dysplasia | 0 / 16 |
+| Moderate dysplasia | 2 / 14 |
+| Severe dysplasia | 3 / 9 |
+
+Severe vs mild: Fisher one-sided p = 0.037 (moderate+severe vs mild: p =
+0.058). Small sample, so suggestive rather than proven -- but it contrasts
+with round 1, whose scores were saturated across every grade (90-96% of
+photos above 0.5 regardless of grade, Spearman rho = 0.11, p = 0.12). Round 4's
+errors concentrate where clinical risk is highest.
+
+### Operating point (decision threshold)
+
+The backend's `CANCER_THRESHOLD` (default 0.5) sets the P(Cancer) cut-off.
+Threshold candidates were chosen on the **validation** set only and then
+applied once to test/holdout:
+
+| Threshold | Val sensitivity | Val client FP | Test sensitivity | Test Kaggle FP | Holdout client FP |
+|---|---|---|---|---|---|
+| 0.50 | 80.0% | 12.5% | 84.3% | 1.5% | 12.8% |
+| 0.40 | 82.9% | 15.0% | 85.7% | 1.5% | 12.8% |
+| 0.30 | 82.9% | 17.5% | 91.4% | 4.6% | 12.8% |
+| 0.20 | 82.9% | 30.0% | 92.9% | 6.2% | 17.9% |
+| 0.10 | 88.6% | 37.5% | 95.7% | 12.3% | 23.1% |
+
+No threshold improves sensitivity for free. Which trade-off is acceptable
+(missed cancers vs false alarms) is a clinical decision for the client; the
+default stays 0.5 until they make it.
+
+### Limitations that still apply
+
+- **Cancer sensitivity on client photos is unmeasured.** The client set has
+  one carcinoma case (in training). All client metrics above are
+  false-positive rates on dysplasia cases.
+- Kaggle sensitivity fell to 84.3% -- 16% of Kaggle cancers are missed at
+  the default threshold.
+- 100 client patients from one source; no external site, device or
+  population validation.
+- Binary labels flatten a graded histopathology spectrum (all dysplasia is
+  "Non-Cancer"); whether high-grade dysplasia should be flagged is a product
+  question for the client.
 
 ## Reproducing
 
 ```
 ml/.venv/Scripts/python.exe scripts/prepare_kaggle.py
-ml/.venv/Scripts/python.exe scripts/prepare_client_validation.py <path-to-treatment-xlsx>
-ml/.venv/Scripts/python.exe scripts/prepare_combined_training.py
-ml/.venv/Scripts/python.exe scripts/train.py --epochs 15
-  --train-dir data/combined_train --val-dir data/combined_val
-  --checkpoint-name resnet50_oral_cancer_v2.pt
-ml/.venv/Scripts/python.exe scripts/evaluate.py --checkpoint artifacts/resnet50_oral_cancer_v2.pt --client-eval-dir data/client_holdout
+ml/.venv/Scripts/python.exe scripts/prepare_client_validation.py <treatment.xlsx>
+ml/.venv/Scripts/python.exe scripts/prepare_client_cases.py <treatment.xlsx> <clinical_dir> <histopath_dir>
+ml/.venv/Scripts/python.exe scripts/prepare_case_split.py
+ml/.venv/Scripts/python.exe scripts/train.py --epochs 15 --train-dir data/case_split/train --val-dir data/case_split/val --checkpoint-name resnet50_oral_cancer_v4.pt
+ml/.venv/Scripts/python.exe scripts/evaluate.py --checkpoint artifacts/resnet50_oral_cancer_v4.pt --client-eval-dir data/case_split/holdout
 ```
