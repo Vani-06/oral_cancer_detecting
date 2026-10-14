@@ -18,6 +18,11 @@ _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(_BACKEND_DIR / ".env")
 
 
+# Values shipped in this repo (defaults and .env.example). Anyone can read
+# them, so a token signed with one can be forged.
+_PLACEHOLDER_SECRETS = {"dev-secret-change-in-production", "change-me"}
+
+
 class Settings:
     BASE_DIR: Path = _BACKEND_DIR
     APP_DIR: Path = BASE_DIR / "app"
@@ -36,7 +41,19 @@ class Settings:
 
     SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-secret-change-in-production")
     JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+    # One clinic shift. The token sits in browser storage, so a shorter life
+    # limits how long a stolen token stays useful.
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))
+
+    # Open sign-up is convenient in development; in production accounts
+    # should be created deliberately, so it defaults to off there.
+    ALLOW_REGISTRATION: bool = os.getenv(
+        "ALLOW_REGISTRATION", "false" if ENVIRONMENT == "production" else "true"
+    ).lower() == "true"
+
+    # Failed logins allowed per (IP, email) within the window before a 429.
+    LOGIN_MAX_FAILURES: int = int(os.getenv("LOGIN_MAX_FAILURES", "5"))
+    LOGIN_WINDOW_SECONDS: int = int(os.getenv("LOGIN_WINDOW_SECONDS", "900"))
 
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'oral_cancer.db'}")
     AUTO_CREATE_TABLES: bool = os.getenv("AUTO_CREATE_TABLES", "true").lower() == "true"
@@ -70,9 +87,18 @@ class Settings:
             return json.loads(raw)
         return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT == "production"
+
     def validate(self) -> None:
-        if self.ENVIRONMENT == "production" and self.SECRET_KEY == "dev-secret-change-in-production":
-            raise RuntimeError("SECRET_KEY must be set in production")
+        if self.is_production and (
+            self.SECRET_KEY in _PLACEHOLDER_SECRETS or len(self.SECRET_KEY) < 32
+        ):
+            raise RuntimeError(
+                "SECRET_KEY must be a random value of at least 32 characters in production "
+                '(e.g. python -c "import secrets; print(secrets.token_urlsafe(48))")'
+            )
         if self.MAX_FILE_SIZE_MB <= 0:
             raise RuntimeError("MAX_FILE_SIZE_MB must be positive")
         if not 0.0 < self.CANCER_THRESHOLD < 1.0:
