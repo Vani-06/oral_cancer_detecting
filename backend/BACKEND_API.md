@@ -68,7 +68,7 @@ multipart/form-data
     "prediction_id": 1,
     "prediction": "Cancer",
     "confidence": 0.96,
-    "heatmap_url": "/uploads/heatmaps/1.png",
+    "heatmap_url": "/predictions/1/heatmap",
     "pdf_url": "/reports/1.pdf"
 }
 ```
@@ -128,7 +128,7 @@ Downloads the generated PDF report.
     "prediction_id": 1,
     "prediction": "Cancer",
     "confidence": 0.96,
-    "heatmap_url": "/uploads/heatmaps/1.png",
+    "heatmap_url": "/predictions/1/heatmap",
     "pdf_url": "/reports/1.pdf"
 }
 ```
