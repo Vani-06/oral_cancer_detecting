@@ -1,5 +1,6 @@
 import io
 import os
+import shutil
 import tempfile
 import uuid
 from pathlib import Path
@@ -13,6 +14,7 @@ os.environ["AUTO_CREATE_TABLES"] = "true"
 os.environ["UPLOAD_DIR"] = str(_TMP / "uploads")
 os.environ["REPORT_DIR"] = str(_TMP / "reports")
 os.environ["MODEL_PATH"] = ""
+os.environ["GRADING_MODEL_PATH"] = ""
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -39,6 +41,17 @@ VALID_METADATA = {
 @pytest.fixture(scope="session")
 def tmp_root() -> Path:
     return _TMP
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _remove_tmp_root():
+    # Each run writes test checkpoints (~90 MB each) here; without this the
+    # folders piled up in the system temp directory until the disk filled.
+    yield
+    from app.db import engine
+
+    engine.dispose()  # release the SQLite file so Windows lets us delete it
+    shutil.rmtree(_TMP, ignore_errors=True)
 
 
 @pytest.fixture(scope="session")
