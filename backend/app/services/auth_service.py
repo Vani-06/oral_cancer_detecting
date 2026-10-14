@@ -5,6 +5,10 @@ from app.core.security import create_access_token, hash_password, verify_passwor
 from app.models import User
 from app.schemas.prediction import AuthResponse, UserResponse
 
+# Checked when the email is unknown, so a failed login takes the same bcrypt
+# time either way and response timing does not reveal which emails exist.
+_DUMMY_HASH = hash_password("timing-equaliser-not-a-real-password")
+
 
 class AuthService:
     def __init__(self, db: Session) -> None:
@@ -29,7 +33,10 @@ class AuthService:
     def login(self, email: str, password: str) -> AuthResponse:
         normalized_email = email.lower()
         user = self.db.scalar(select(User).where(User.email == normalized_email))
-        if user is None or not verify_password(password, user.password_hash):
+        if user is None:
+            verify_password(password, _DUMMY_HASH)
+            raise ValueError("Invalid email or password")
+        if not verify_password(password, user.password_hash):
             raise ValueError("Invalid email or password")
         return self._build_auth_response(user)
 

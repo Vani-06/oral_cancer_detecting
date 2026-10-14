@@ -3,12 +3,18 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import UploadFile
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import Prediction, Report, User
 from app.services.inference_service import inference_service
+
+# Far above any clinical photo (12-50 MP is typical; 108 MP phone sensors are
+# the outlier), but low enough that a crafted "decompression
+# bomb" -- a tiny file that expands to gigabytes -- is rejected before decode.
+MAX_IMAGE_PIXELS = 120_000_000
 
 
 class PredictionService:
@@ -70,7 +76,26 @@ class PredictionService:
                 f"File too large. Maximum allowed size is {settings.MAX_FILE_SIZE_MB} MB."
             )
 
+        # The extension and Content-Type are client-supplied; confirm the bytes
+        # are really an image before storing them or handing them to the model.
+        try:
+            self._verify_image(destination)
+        except ValueError:
+            destination.unlink(missing_ok=True)
+            raise
+
         return filename
+
+    @staticmethod
+    def _verify_image(path: Path) -> None:
+        try:
+            with Image.open(path) as im:
+                width, height = im.size
+                if width * height > MAX_IMAGE_PIXELS:
+                    raise ValueError("Image dimensions are too large.")
+                im.verify()
+        except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError) as exc:
+            raise ValueError("The uploaded file is not a readable image.") from exc
 
     def create_prediction(
         self, user: User, file: UploadFile, metadata: dict | None = None
