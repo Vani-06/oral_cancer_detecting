@@ -65,6 +65,10 @@ class Settings:
     # environment without the (large, model-specific) weights file keeps
     # working.
     MODEL_PATH: str | None = os.getenv("MODEL_PATH") or None
+    # Optional: the dysplasia grading checkpoint (mild / moderate / severe,
+    # see ml/scripts/train_grading.py). When unset, predictions carry no grade
+    # but cancer detection still runs.
+    GRADING_MODEL_PATH: str | None = os.getenv("GRADING_MODEL_PATH") or None
     # P(Cancer) at or above which a prediction is labelled Cancer. 0.5 is the
     # plain argmax; lower values trade more false alarms for fewer missed
     # cancers. Choose with the clinical team using the validation table in

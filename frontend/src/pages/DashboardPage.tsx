@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { ApiError } from '@/api/client'
 import { listPredictions } from '@/api/predictions'
 import type { PredictionHistoryEntry } from '@/api/types'
+import { GradeBadge } from '@/components/result/GradeBadge'
 import { PredictionBadge } from '@/components/result/PredictionBadge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -121,6 +122,9 @@ export function DashboardPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
+                      {item.prediction !== 'Pending' && (
+                        <GradeBadge grade={item.dysplasia_grade} size="sm" />
+                      )}
                       <PredictionBadge prediction={item.prediction} size="sm" />
                       <Link to={`/predictions/${item.prediction_id}`}>
                         <Button variant="secondary" size="sm">

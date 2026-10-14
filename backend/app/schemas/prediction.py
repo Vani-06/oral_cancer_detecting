@@ -1,6 +1,10 @@
 from datetime import datetime
 from typing import Literal
 
+# Model scores are deliberately never part of any response: the app reports a
+# grade and a detection result, not a probability a clinician might over-read.
+DysplasiaGrade = Literal["mild", "moderate", "severe"]
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
@@ -113,7 +117,7 @@ class PredictionUploadResponse(BaseModel):
     created_at: str
     image_url: str | None = None
     prediction: str = "Pending"
-    confidence: float = 0.0
+    dysplasia_grade: DysplasiaGrade | None = None
     heatmap_url: str | None = None
     pdf_url: str | None = None
     is_pending_inference: bool = True
@@ -124,7 +128,7 @@ class PredictionResult(BaseModel):
 
     prediction_id: int
     prediction: str
-    confidence: float
+    dysplasia_grade: DysplasiaGrade | None = None
     heatmap_url: str | None = None
     pdf_url: str | None = None
 
@@ -134,7 +138,7 @@ class PredictionHistoryItem(BaseModel):
 
     prediction_id: int
     prediction: str
-    confidence: float
+    dysplasia_grade: DysplasiaGrade | None = None
     created_at: str
     image_url: str | None = None
 
@@ -144,7 +148,7 @@ class PredictionDetail(BaseModel):
 
     prediction_id: int
     prediction: str
-    confidence: float
+    dysplasia_grade: DysplasiaGrade | None = None
     heatmap_url: str | None = None
     pdf_url: str | None = None
     filename: str

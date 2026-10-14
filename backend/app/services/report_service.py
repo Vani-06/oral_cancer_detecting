@@ -3,8 +3,8 @@ Generates the downloadable PDF report for a completed prediction.
 
 Replaces the earlier hand-built raw PDF bytes (which could not embed images)
 with reportlab, so the report carries the actual uploaded photo and, once a
-model is configured, its Grad-CAM heatmap alongside the prediction and
-confidence -- not just text.
+model is configured, its Grad-CAM heatmap alongside the dysplasia grade and
+the cancer detection result -- not just text. No model score is printed.
 """
 
 from pathlib import Path
@@ -55,6 +55,14 @@ ENUM_FIELDS = {"sex", "tobacco_type", "lesion_site"}
 TEXT_WIDTH = PAGE_WIDTH - 2 * MARGIN
 
 
+def grade_text(grade: str | None) -> str:
+    return f"{grade.capitalize()} dysplasia" if grade else "Not available"
+
+
+def cancer_text(label: str | None) -> str:
+    return {"Cancer": "Cancer detected", "Non-Cancer": "No cancer detected"}.get(label or "", "Pending")
+
+
 def _format_metadata_value(key: str, value: object) -> str:
     if isinstance(value, bool):
         return "Yes" if value else "No"
@@ -103,11 +111,9 @@ def generate_report_pdf(prediction: Prediction, output_path: Path) -> None:
     y -= 0.4 * inch
 
     c.setFont("Helvetica-Bold", 12)
-    c.drawString(MARGIN, y, f"Prediction: {prediction.prediction or 'Pending'}")
-    y -= 0.22 * inch
-    c.setFont("Helvetica", 11)
-    confidence_pct = f"{(prediction.confidence or 0) * 100:.1f}%"
-    c.drawString(MARGIN, y, f"Confidence: {confidence_pct}")
+    c.drawString(MARGIN, y, f"1. Dysplasia grade: {grade_text(prediction.dysplasia_grade)}")
+    y -= 0.24 * inch
+    c.drawString(MARGIN, y, f"2. Cancer detection: {cancer_text(prediction.prediction)}")
     y -= 0.45 * inch
 
     image_top = y

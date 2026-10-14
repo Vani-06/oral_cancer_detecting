@@ -7,13 +7,19 @@ environment that isn't part of the deployed backend) -- the model
 architecture and Grad-CAM logic are small enough to duplicate here rather
 than couple the runtime service to the training toolchain's layout.
 
+Two models, both ResNet-50 checkpoints in the same format:
+- cancer detection (MODEL_PATH): Cancer / Non-Cancer, plus the Grad-CAM heatmap
+- dysplasia grading (GRADING_MODEL_PATH, optional): mild / moderate / severe
+
 If MODEL_PATH is unset or the checkpoint file doesn't exist, `enabled` is
 False and `predict()` is never called -- PredictionService leaves the record
 Pending exactly as it did before real inference existed. This is a
 deliberate fallback so local dev and any environment without the (large,
-model-specific) weights file keeps working.
+model-specific) weights file keeps working. Without a grading checkpoint,
+predictions simply carry no grade.
 """
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -27,44 +33,74 @@ from app.core.config import settings
 
 _GRADCAM_ALPHA = 0.45
 
+# Grading checkpoint classes -> the short grade stored and shown.
+_GRADE_NAMES = {
+    "mild_dysplasia": "mild",
+    "moderate_dysplasia": "moderate",
+    "severe_dysplasia": "severe",
+}
+
+
+@dataclass(frozen=True)
+class InferenceResult:
+    label: str  # "Cancer" or "Non-Cancer"
+    confidence: float  # probability of `label`; stored, never shown
+    dysplasia_grade: str | None  # "mild" / "moderate" / "severe", or None
+
+
+def _load_checkpoint(path_setting: str | None):
+    """Returns (model, transform, class_to_idx), or None if not configured."""
+    if not path_setting or not Path(path_setting).is_file():
+        return None
+    checkpoint = torch.load(Path(path_setting), map_location="cpu", weights_only=False)
+    class_to_idx: dict[str, int] = dict(checkpoint["class_to_idx"])
+
+    model = resnet50(weights=None)
+    model.fc = torch.nn.Linear(model.fc.in_features, len(class_to_idx))
+    model.load_state_dict(checkpoint["state_dict"])
+    model.eval()
+
+    transform = transforms.Compose(
+        [
+            transforms.Resize((checkpoint["img_size"], checkpoint["img_size"])),
+            transforms.ToTensor(),
+            transforms.Normalize(checkpoint["mean"], checkpoint["std"]),
+        ]
+    )
+    return model, transform, class_to_idx
+
 
 class InferenceService:
     def __init__(self) -> None:
         self.enabled = False
+        self.grading_enabled = False
         self._model: torch.nn.Module | None = None
         self._transform: transforms.Compose | None = None
         self._idx_to_label: dict[int, str] | None = None
 
-        model_path = settings.MODEL_PATH
-        if not model_path:
+        cancer = _load_checkpoint(settings.MODEL_PATH)
+        if cancer is None:
             return
-
-        checkpoint_path = Path(model_path)
-        if not checkpoint_path.is_file():
-            return
-
-        checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-
-        model = resnet50(weights=None)
-        model.fc = torch.nn.Linear(model.fc.in_features, 2)
-        model.load_state_dict(checkpoint["state_dict"])
-        model.eval()
-
-        self._model = model
-        self._transform = transforms.Compose(
-            [
-                transforms.Resize((checkpoint["img_size"], checkpoint["img_size"])),
-                transforms.ToTensor(),
-                transforms.Normalize(checkpoint["mean"], checkpoint["std"]),
-            ]
-        )
-        self._label_to_idx: dict[str, int] = dict(checkpoint["class_to_idx"])
+        self._model, self._transform, self._label_to_idx = cancer
         self._idx_to_label = {v: k for k, v in self._label_to_idx.items()}
         self.enabled = True
 
-    def predict(self, image_path: Path, heatmap_output_path: Path) -> tuple[str, float]:
-        """Runs classification + Grad-CAM, writes the heatmap overlay PNG to
-        heatmap_output_path, and returns (label, confidence).
+        grading = _load_checkpoint(settings.GRADING_MODEL_PATH)
+        if grading is not None:
+            self._grading_model, self._grading_transform, grade_to_idx = grading
+            self._idx_to_grade = {v: _GRADE_NAMES[k] for k, v in grade_to_idx.items()}
+            self.grading_enabled = True
+
+    def _grade(self, image: Image.Image) -> str | None:
+        if not self.grading_enabled:
+            return None
+        with torch.no_grad():
+            logits = self._grading_model(self._grading_transform(image).unsqueeze(0))
+        return self._idx_to_grade[int(logits.argmax(dim=1).item())]
+
+    def predict(self, image_path: Path, heatmap_output_path: Path) -> InferenceResult:
+        """Runs cancer detection + Grad-CAM and, if configured, dysplasia
+        grading. Writes the heatmap overlay PNG to heatmap_output_path.
 
         Only call this when `self.enabled` is True.
         """
@@ -123,7 +159,11 @@ class InferenceService:
         overlay.convert("RGB").save(heatmap_output_path)
 
         assert self._idx_to_label is not None
-        return self._idx_to_label[predicted_idx], confidence
+        return InferenceResult(
+            label=self._idx_to_label[predicted_idx],
+            confidence=confidence,
+            dysplasia_grade=self._grade(image),
+        )
 
     @staticmethod
     def _overlay(image: Image.Image, heatmap: Image.Image) -> Image.Image:

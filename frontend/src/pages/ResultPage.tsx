@@ -5,7 +5,7 @@ import { ApiError } from '@/api/client'
 import { getPrediction } from '@/api/predictions'
 import type { PredictionOutcome } from '@/api/types'
 import { DisclaimerBanner } from '@/components/layout/DisclaimerBanner'
-import { ConfidenceGauge } from '@/components/result/ConfidenceGauge'
+import { GradeBadge } from '@/components/result/GradeBadge'
 import { HeatmapViewer } from '@/components/result/HeatmapViewer'
 import { MetadataSummary } from '@/components/result/MetadataSummary'
 import { PredictionBadge } from '@/components/result/PredictionBadge'
@@ -133,7 +133,12 @@ function ResultView({
             )}
           </p>
         </div>
-        <PredictionBadge prediction={outcome.prediction} />
+        {!outcome.is_pending_inference && (
+          <div className="flex flex-wrap items-center gap-2">
+            <GradeBadge grade={outcome.dysplasia_grade} />
+            <PredictionBadge prediction={outcome.prediction} />
+          </div>
+        )}
       </div>
 
       <DisclaimerBanner className="rounded-md border" />
@@ -147,7 +152,7 @@ function ResultView({
               <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs">
                 POST /predict
               </code>{' '}
-              yet. No confidence score or heatmap is shown, because none exists.
+              yet. No result or heatmap is shown, because none exists.
             </p>
             {outcome.image_url && (
               <AuthorizedImage
@@ -168,11 +173,25 @@ function ResultView({
           </Card>
 
           <div className="flex flex-col gap-6">
-            <Card title="Confidence">
-              <ConfidenceGauge
-                value={outcome.confidence}
-                prediction={outcome.prediction}
-              />
+            <Card title="Result">
+              <dl className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <dt className="text-xs text-slate-500">1. Dysplasia grade</dt>
+                  <dd>
+                    <GradeBadge grade={outcome.dysplasia_grade} />
+                  </dd>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <dt className="text-xs text-slate-500">2. Cancer detection</dt>
+                  <dd>
+                    <PredictionBadge prediction={outcome.prediction} />
+                  </dd>
+                </div>
+              </dl>
+              <p className="mt-4 text-xs text-slate-500">
+                Both are screening estimates from the photo. Grade and
+                diagnosis are confirmed only by biopsy.
+              </p>
             </Card>
 
             <Card title="Report">

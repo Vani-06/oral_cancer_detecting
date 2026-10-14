@@ -65,7 +65,7 @@ def _record_to_detail(record: Prediction) -> PredictionDetail:
     return PredictionDetail(
         prediction_id=record.prediction_id,
         prediction=record.prediction or "Pending",
-        confidence=record.confidence or 0.0,
+        dysplasia_grade=record.dysplasia_grade,
         heatmap_url=_heatmap_url(record),
         pdf_url=_report_url(record),
         filename=record.filename,
@@ -80,7 +80,7 @@ def _record_to_history_item(record: Prediction) -> PredictionHistoryItem:
     return PredictionHistoryItem(
         prediction_id=record.prediction_id,
         prediction=record.prediction or "Pending",
-        confidence=record.confidence or 0.0,
+        dysplasia_grade=record.dysplasia_grade,
         created_at=record.created_at.isoformat(),
         image_url=_image_url(record),
     )
@@ -114,7 +114,7 @@ async def upload_prediction(
         created_at=prediction.created_at.isoformat(),
         image_url=_image_url(prediction),
         prediction=prediction.prediction or "Pending",
-        confidence=prediction.confidence or 0.0,
+        dysplasia_grade=prediction.dysplasia_grade,
         heatmap_url=_heatmap_url(prediction),
         pdf_url=_report_url(prediction),
         is_pending_inference=prediction.is_pending,
