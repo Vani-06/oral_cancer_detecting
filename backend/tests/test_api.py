@@ -148,3 +148,22 @@ def test_report_keeps_long_notes_on_extra_pages(tmp_root):
     # ~2000 characters of notes cannot fit under the images on page one; the
     # old renderer silently dropped them instead of continuing.
     assert page_count == 2
+
+
+def test_patient_images_require_the_owners_token(client):
+    alice, bob = register(client), register(client)
+    body = upload(client, alice).json()
+    image_url = body["image_url"]
+    assert image_url == f"/predictions/{body['prediction_id']}/image"
+
+    owner = client.get(image_url, headers=alice)
+    assert owner.status_code == 200
+    assert owner.headers["cache-control"] == "private, no-store"
+    assert client.get(image_url).status_code == 401
+    assert client.get(image_url, headers=bob).status_code == 404
+
+
+def test_upload_directory_is_not_publicly_served(client, auth, tmp_root):
+    upload(client, auth)
+    stored = next((tmp_root / "uploads").glob("*.jpg"))
+    assert client.get(f"/uploads/{stored.name}").status_code == 404

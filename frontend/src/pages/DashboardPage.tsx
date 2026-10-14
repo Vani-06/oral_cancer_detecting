@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/Card'
 import { Spinner } from '@/components/ui/Spinner'
 import { useAuth } from '@/hooks/useAuth'
 import { formatDateTime } from '@/lib/format'
+import { AuthorizedImage } from '@/components/ui/AuthorizedImage'
 
 export function DashboardPage() {
   const { user } = useAuth()
@@ -104,7 +105,7 @@ export function DashboardPage() {
                   >
                     <div className="flex items-center gap-3">
                       {item.image_url ? (
-                        <img
+                        <AuthorizedImage
                           src={item.image_url}
                           alt="Uploaded oral lesion"
                           className="h-12 w-12 rounded-md border border-slate-200 object-cover"
