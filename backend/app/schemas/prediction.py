@@ -55,24 +55,46 @@ class PatientMetadata(BaseModel):
     any JSON object posted as metadata_json was stored as-is and printed into
     the PDF report. Field names and ranges must stay identical to the
     frontend schema and to PatientMetadata in frontend/src/api/types.ts.
+
+    The optional free-text and duration fields mirror the columns of the
+    client's own case sheet (patient ID, habit duration, medical history,
+    clinical notes), so a case recorded there can be entered here unchanged.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
+    patient_reference: str | None = Field(default=None, max_length=64)
     age: int = Field(ge=1, le=120)
     sex: Literal["male", "female", "other"]
     tobacco_use: bool
     tobacco_type: Literal["smoked", "smokeless", "both"] | None = None
     tobacco_years: int | None = Field(default=None, ge=0, le=100)
     betel_quid_use: bool
+    betel_quid_years: int | None = Field(default=None, ge=0, le=100)
     alcohol_use: bool
     lesion_site: Literal[
-        "buccal_mucosa", "tongue", "gingiva", "palate", "floor_of_mouth", "lip"
+        "buccal_mucosa",
+        "tongue",
+        "gingiva",
+        "palate",
+        "floor_of_mouth",
+        "lip",
+        "retromolar_trigone",
+        "alveolar_ridge",
+        "other",
     ]
-    lesion_duration_weeks: int = Field(ge=0, le=520)
+    # Optional: the client's case sheet does not record it for most patients.
+    lesion_duration_weeks: int | None = Field(default=None, ge=0, le=520)
     pain: bool
     bleeding: bool
     prior_lesion_history: bool
+    medical_history: str | None = Field(default=None, max_length=1000)
+    clinical_notes: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("patient_reference", "medical_history", "clinical_notes")
+    @classmethod
+    def blank_to_none(cls, v: str | None) -> str | None:
+        return v or None
 
     @model_validator(mode="after")
     def tobacco_follow_ups(self) -> "PatientMetadata":

@@ -1,4 +1,6 @@
 import json
+import re
+import re
 
 from conftest import VALID_METADATA, jpeg_bytes, register
 
@@ -80,3 +82,69 @@ def test_users_cannot_see_each_others_predictions(client):
     assert client.get(f"/predictions/{pid}", headers=bob).status_code == 404
     assert client.get(f"/reports/{pid}", headers=bob).status_code == 404
     assert all(p["prediction_id"] != pid for p in client.get("/predictions", headers=bob).json())
+
+
+# Fields from the client's own case sheet (07-05-2025_Treatment.xlsx): patient
+# ID, habit duration, medical history and clinical notes, plus sites it uses.
+CASE_SHEET_METADATA = {
+    **VALID_METADATA,
+    "patient_reference": "OPD-2025-0412",
+    "tobacco_use": False,
+    "tobacco_type": None,
+    "tobacco_years": None,
+    "betel_quid_years": 10,
+    "lesion_site": "retromolar_trigone",
+    "medical_history": "Diabetes, hypertension 5 years",
+    "clinical_notes": "Non scrapable white patch irt left buccal mucosa",
+}
+
+
+def test_case_sheet_fields_are_accepted_and_stored(client, auth):
+    resp = upload(client, auth, data={"metadata_json": json.dumps(CASE_SHEET_METADATA)})
+    assert resp.status_code == 201, resp.text
+    detail = client.get(f"/predictions/{resp.json()['prediction_id']}", headers=auth).json()
+    assert detail["metadata"] == {k: v for k, v in CASE_SHEET_METADATA.items() if v is not None}
+
+
+def test_case_sheet_optional_fields_can_be_omitted(client, auth):
+    minimal = {k: v for k, v in VALID_METADATA.items() if k != "lesion_duration_weeks"}
+    blank_text = {**minimal, "medical_history": "   ", "clinical_notes": ""}
+    for meta in (minimal, blank_text):
+        resp = upload(client, auth, data={"metadata_json": json.dumps(meta)})
+        assert resp.status_code == 201, resp.text
+        stored = client.get(f"/predictions/{resp.json()['prediction_id']}", headers=auth).json()["metadata"]
+        assert "medical_history" not in stored and "clinical_notes" not in stored
+
+
+def test_case_sheet_field_limits(client, auth):
+    for bad in (
+        {"clinical_notes": "x" * 2001},
+        {"medical_history": "x" * 1001},
+        {"patient_reference": "x" * 65},
+        {"betel_quid_years": -1},
+    ):
+        resp = upload(client, auth, data={"metadata_json": json.dumps({**VALID_METADATA, **bad})})
+        assert resp.status_code == 400, f"accepted {bad}"
+
+
+def test_report_keeps_long_notes_on_extra_pages(tmp_root):
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    from app.services.report_service import generate_report_pdf
+
+    record = SimpleNamespace(
+        prediction_id=1,
+        created_at=datetime(2026, 1, 1),
+        prediction="Non-Cancer",
+        confidence=0.8,
+        filename="missing.jpg",
+        heatmap_path=None,
+        metadata_json={**CASE_SHEET_METADATA, "clinical_notes": "word " * 399},
+    )
+    out = tmp_root / "long-notes.pdf"
+    generate_report_pdf(record, out)
+    page_count = int(re.search(rb"/Count (\d+)", out.read_bytes()).group(1))
+    # ~2000 characters of notes cannot fit under the images on page one; the
+    # old renderer silently dropped them instead of continuing.
+    assert page_count == 2

@@ -29,12 +29,33 @@ export const LESION_SITE_OPTIONS = [
   { value: 'palate', label: 'Palate' },
   { value: 'floor_of_mouth', label: 'Floor of mouth' },
   { value: 'lip', label: 'Lip' },
+  { value: 'retromolar_trigone', label: 'Retromolar trigone' },
+  { value: 'alveolar_ridge', label: 'Alveolar ridge' },
+  { value: 'other', label: 'Other (describe in clinical notes)' },
 ] as const
+
+const LESION_SITES = [
+  'buccal_mucosa',
+  'tongue',
+  'gingiva',
+  'palate',
+  'floor_of_mouth',
+  'lip',
+  'retromolar_trigone',
+  'alveolar_ridge',
+  'other',
+] as const
+
+/** Optional free text. The form maps blank input to undefined (textField). */
+function optionalText(max: number) {
+  return z.string().max(max, `Enter ${max} characters or fewer`).optional()
+}
 
 const YES_NO_REQUIRED = 'Select yes or no'
 
 export const patientMetadataSchema = z
   .object({
+    patient_reference: optionalText(64),
     age: z
       .number({ error: 'Enter the patient age' })
       .int('Age must be a whole number')
@@ -54,28 +75,29 @@ export const patientMetadataSchema = z
       .optional(),
 
     betel_quid_use: z.boolean({ error: YES_NO_REQUIRED }),
+    betel_quid_years: z
+      .number()
+      .int('Enter a whole number of years')
+      .min(0, 'Years cannot be negative')
+      .max(100, 'Enter 100 years or fewer')
+      .optional(),
     alcohol_use: z.boolean({ error: YES_NO_REQUIRED }),
 
-    lesion_site: z.enum(
-      [
-        'buccal_mucosa',
-        'tongue',
-        'gingiva',
-        'palate',
-        'floor_of_mouth',
-        'lip',
-      ],
-      { error: 'Select the lesion site' },
-    ),
+    lesion_site: z.enum(LESION_SITES, { error: 'Select the lesion site' }),
+    // Optional: often not known, and the client's case sheet rarely has it.
     lesion_duration_weeks: z
-      .number({ error: 'Enter how long the lesion has been present' })
+      .number()
       .int('Enter a whole number of weeks')
       .min(0, 'Duration cannot be negative')
-      .max(520, 'Enter 520 weeks (10 years) or fewer'),
+      .max(520, 'Enter 520 weeks (10 years) or fewer')
+      .optional(),
 
     pain: z.boolean({ error: YES_NO_REQUIRED }),
     bleeding: z.boolean({ error: YES_NO_REQUIRED }),
     prior_lesion_history: z.boolean({ error: YES_NO_REQUIRED }),
+
+    medical_history: optionalText(1000),
+    clinical_notes: optionalText(2000),
   })
   // The tobacco follow-ups are only meaningful, and only required, when the
   // patient uses tobacco.
@@ -114,18 +136,22 @@ export type MetadataMatchesApiContract = Expect<
 /** Human-readable labels, for rendering a submitted record back to the user. */
 export const METADATA_FIELD_LABELS: Record<keyof PatientMetadataValues, string> =
   {
+    patient_reference: 'Patient ID',
     age: 'Age',
     sex: 'Sex',
     tobacco_use: 'Tobacco use',
     tobacco_type: 'Tobacco type',
     tobacco_years: 'Years of tobacco use',
     betel_quid_use: 'Betel quid / areca nut',
+    betel_quid_years: 'Years of betel quid use',
     alcohol_use: 'Alcohol use',
     lesion_site: 'Lesion site',
     lesion_duration_weeks: 'Lesion duration',
     pain: 'Pain',
     bleeding: 'Bleeding',
     prior_lesion_history: 'Prior oral lesion',
+    medical_history: 'Medical history',
+    clinical_notes: 'Clinical notes',
   }
 
 function labelFrom(
@@ -149,6 +175,7 @@ export function formatMetadataValue(
     case 'lesion_duration_weeks':
       return `${value} ${value === 1 ? 'week' : 'weeks'}`
     case 'tobacco_years':
+    case 'betel_quid_years':
       return `${value} ${value === 1 ? 'year' : 'years'}`
     case 'sex':
       return labelFrom(SEX_OPTIONS, String(value))
