@@ -93,9 +93,9 @@ class PredictionService:
         # existed -- this is the deliberate fallback path, not an error.
         if inference_service.enabled:
             # Random, like uploaded image names: the heatmap overlays the
-            # patient's photo and is served by the unauthenticated /uploads
-            # mount, so a sequential name ({prediction_id}.png) would let
-            # anyone enumerate every patient's image.
+            # patient's photo. It is only served through the authenticated
+            # heatmap endpoint, but an unguessable name is defence in depth
+            # if the directory is ever exposed by a misconfigured proxy.
             heatmap_filename = f"{uuid4().hex}.png"
             heatmap_path = self.upload_dir / "heatmaps" / heatmap_filename
             label, confidence = inference_service.predict(

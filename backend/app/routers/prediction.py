@@ -47,16 +47,30 @@ def _parse_metadata(raw: str | None) -> dict | None:
         raise ValueError(f"Invalid patient metadata -- {problems}") from exc
 
 
+def _image_url(record: Prediction) -> str | None:
+    return f"/predictions/{record.prediction_id}/image" if record.filename else None
+
+
+def _heatmap_url(record: Prediction) -> str | None:
+    return f"/predictions/{record.prediction_id}/heatmap" if record.heatmap_path else None
+
+
+def _private_file(path: Path, media_type: str | None = None) -> FileResponse:
+    # Patient images must not be kept by shared caches or the browser's disk
+    # cache after the clinician logs out.
+    return FileResponse(str(path), media_type=media_type, headers={"Cache-Control": "private, no-store"})
+
+
 def _record_to_detail(record: Prediction) -> PredictionDetail:
     return PredictionDetail(
         prediction_id=record.prediction_id,
         prediction=record.prediction or "Pending",
         confidence=record.confidence or 0.0,
-        heatmap_url=f"/uploads/heatmaps/{record.heatmap_path}" if record.heatmap_path else None,
+        heatmap_url=_heatmap_url(record),
         pdf_url=_report_url(record),
         filename=record.filename,
         created_at=record.created_at.isoformat(),
-        image_url=f"/uploads/{record.filename}" if record.filename else None,
+        image_url=_image_url(record),
         is_pending_inference=record.is_pending,
         metadata=record.metadata_json,
     )
@@ -68,7 +82,7 @@ def _record_to_history_item(record: Prediction) -> PredictionHistoryItem:
         prediction=record.prediction or "Pending",
         confidence=record.confidence or 0.0,
         created_at=record.created_at.isoformat(),
-        image_url=f"/uploads/{record.filename}" if record.filename else None,
+        image_url=_image_url(record),
     )
 
 
@@ -98,10 +112,10 @@ async def upload_prediction(
         status="uploaded",
         message=message,
         created_at=prediction.created_at.isoformat(),
-        image_url=f"/uploads/{prediction.filename}" if prediction.filename else None,
+        image_url=_image_url(prediction),
         prediction=prediction.prediction or "Pending",
         confidence=prediction.confidence or 0.0,
-        heatmap_url=f"/uploads/heatmaps/{prediction.heatmap_path}" if prediction.heatmap_path else None,
+        heatmap_url=_heatmap_url(prediction),
         pdf_url=_report_url(prediction),
         is_pending_inference=prediction.is_pending,
     )
@@ -129,6 +143,34 @@ def get_prediction(
     return _record_to_detail(record)
 
 
+@router.get("/predictions/{prediction_id}/image")
+def get_prediction_image(
+    prediction_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # Replaces the old unauthenticated /uploads static mount: patient photos
+    # are only served to the clinician who uploaded them.
+    record = PredictionService(db).get_prediction(prediction_id, user)
+    path = settings.UPLOAD_DIR / record.filename if record and record.filename else None
+    if path is None or not path.is_file():
+        raise HTTPException(status_code=404, detail="Image not found")
+    return _private_file(path)
+
+
+@router.get("/predictions/{prediction_id}/heatmap")
+def get_prediction_heatmap(
+    prediction_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    record = PredictionService(db).get_prediction(prediction_id, user)
+    path = settings.UPLOAD_DIR / "heatmaps" / record.heatmap_path if record and record.heatmap_path else None
+    if path is None or not path.is_file():
+        raise HTTPException(status_code=404, detail="Heatmap not found")
+    return _private_file(path, media_type="image/png")
+
+
 @router.get("/reports/{prediction_id}")
 def download_report(
     prediction_id: int,
@@ -143,7 +185,7 @@ def download_report(
         raise HTTPException(status_code=400, detail="Report not available until inference completes")
 
     # Reports are derived artifacts: always written to REPORT_DIR (outside the
-    # public /uploads mount), and regenerated if the stored file is gone --
+    # image directory), and regenerated if the stored file is gone --
     # e.g. an ephemeral container filesystem, or a row created before reports
     # moved out of UPLOAD_DIR.
     report_path = Path(settings.REPORT_DIR) / f"{record.prediction_id}.pdf"
@@ -159,4 +201,5 @@ def download_report(
         str(report_path),
         media_type="application/pdf",
         filename=f"oral-lesion-report-{record.prediction_id}.pdf",
+        headers={"Cache-Control": "private, no-store"},
     )

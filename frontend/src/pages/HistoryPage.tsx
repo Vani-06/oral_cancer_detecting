@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Spinner } from '@/components/ui/Spinner'
 import { formatDateTime, formatPercent } from '@/lib/format'
+import { AuthorizedImage } from '@/components/ui/AuthorizedImage'
 
 export function HistoryPage() {
   const [items, setItems] = useState<PredictionHistoryEntry[]>([])
@@ -95,7 +96,7 @@ export function HistoryPage() {
                   <tr key={item.prediction_id} className="align-middle">
                     <td className="py-3 pr-4">
                       {item.image_url ? (
-                        <img
+                        <AuthorizedImage
                           src={item.image_url}
                           alt="Uploaded oral lesion"
                           className="h-14 w-14 rounded-md border border-slate-200 object-cover"

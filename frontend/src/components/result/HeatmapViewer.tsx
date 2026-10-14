@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 
 import { resolveUrl } from '@/api/client'
+import { useAuthorizedImage } from '@/hooks/useAuthorizedImage'
 import { cn } from '@/lib/cn'
 
 type Mode = 'overlay' | 'side-by-side'
@@ -20,6 +21,9 @@ export function HeatmapViewer({
   const sliderId = useId()
   const [mode, setMode] = useState<Mode>('overlay')
   const [opacity, setOpacity] = useState(0.6)
+  // Both are owner-only API resources, fetched with the auth token.
+  const source = useAuthorizedImage(imageUrl ? resolveUrl(imageUrl) : null)
+  const overlay = useAuthorizedImage(heatmapUrl ? resolveUrl(heatmapUrl) : null)
 
   if (!imageUrl) {
     return (
@@ -30,10 +34,11 @@ export function HeatmapViewer({
     )
   }
 
-  const source = resolveUrl(imageUrl)
-  const overlay = heatmapUrl ? resolveUrl(heatmapUrl) : null
+  if (!source) {
+    return <p className="text-sm text-slate-600">Loading image…</p>
+  }
 
-  if (!overlay) {
+  if (!heatmapUrl) {
     return (
       <div className="flex flex-col gap-3">
         <img

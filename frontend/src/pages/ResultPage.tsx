@@ -15,6 +15,7 @@ import { Card } from '@/components/ui/Card'
 import { Spinner } from '@/components/ui/Spinner'
 import { formatDateTime } from '@/lib/format'
 import type { PatientMetadataValues } from '@/lib/metadataSchema'
+import { AuthorizedImage } from '@/components/ui/AuthorizedImage'
 
 interface ResultLocationState {
   outcome?: PredictionOutcome
@@ -149,7 +150,7 @@ function ResultView({
               yet. No confidence score or heatmap is shown, because none exists.
             </p>
             {outcome.image_url && (
-              <img
+              <AuthorizedImage
                 src={outcome.image_url}
                 alt="Uploaded oral lesion"
                 className="border-surface-border max-h-72 self-start rounded-md border object-contain"

@@ -5,6 +5,7 @@ ml/scripts/train.py writes, so the tests don't depend on the (gitignored)
 trained weights. Predictions are meaningless; the plumbing is what's tested.
 """
 
+import io
 import json
 from pathlib import Path
 
@@ -13,7 +14,7 @@ import torch
 from PIL import Image
 from torchvision.models import resnet50
 
-from conftest import VALID_METADATA, jpeg_bytes
+from conftest import VALID_METADATA, jpeg_bytes, register
 from app.core.config import settings
 from app.services import inference_service as inference_module
 from app.services import prediction_service as prediction_module
@@ -21,8 +22,14 @@ from app.services import prediction_service as prediction_module
 
 @pytest.fixture(scope="module")
 def enabled_inference(tmp_root):
+    torch.manual_seed(0)
     model = resnet50(weights=None)
     model.fc = torch.nn.Linear(model.fc.in_features, 2)
+    # Small head weights keep P(Cancer) strictly inside (0, 1). With default
+    # init the untrained backbone's activations can saturate softmax to
+    # exactly 1.0 in float32, which made the threshold test flaky.
+    torch.nn.init.normal_(model.fc.weight, std=1e-4)
+    torch.nn.init.zeros_(model.fc.bias)
     ckpt = tmp_root / "random_model.pt"
     torch.save(
         {
@@ -57,12 +64,16 @@ def test_inference_populates_result_and_report_link(client, auth, enabled_infere
     assert body["prediction"] in {"Cancer", "Non-Cancer"}
     assert 0.5 <= body["confidence"] <= 1.0
     assert body["is_pending_inference"] is False
-    assert body["heatmap_url"].startswith("/uploads/heatmaps/")
+    assert body["heatmap_url"] == f"/predictions/{body['prediction_id']}/heatmap"
     assert body["pdf_url"] == f"/reports/{body['prediction_id']}"
 
-    heatmap_name = body["heatmap_url"].rsplit("/", 1)[-1]
-    assert heatmap_name != f"{body['prediction_id']}.png", "heatmap name must not be guessable"
-    assert client.get(body["heatmap_url"]).status_code == 200
+    resp = client.get(body["heatmap_url"], headers=auth)
+    assert resp.status_code == 200 and resp.headers["content-type"] == "image/png"
+    assert client.get(body["heatmap_url"]).status_code == 401
+    assert client.get(body["heatmap_url"], headers=register(client)).status_code == 404
+
+    # The stored file name is still random (defence in depth), not {id}.png.
+    assert not (Path(settings.UPLOAD_DIR) / "heatmaps" / f"{body['prediction_id']}.png").exists()
 
     detail = client.get(f"/predictions/{body['prediction_id']}", headers=auth).json()
     assert detail["pdf_url"] == body["pdf_url"]
@@ -103,6 +114,6 @@ def test_cancer_threshold_controls_the_label(client, auth, enabled_inference, mo
 def test_exif_rotated_photo_heatmap_matches_upright_orientation(client, auth, enabled_inference):
     # Stored 320x240 with EXIF orientation 6 (rotate 90): displayed as 240x320.
     body = post(client, auth, content=jpeg_bytes(size=(320, 240), exif_orientation=6))
-    heatmap = Path(settings.UPLOAD_DIR) / "heatmaps" / body["heatmap_url"].rsplit("/", 1)[-1]
-    with Image.open(heatmap) as im:
+    heatmap = client.get(body["heatmap_url"], headers=auth).content
+    with Image.open(io.BytesIO(heatmap)) as im:
         assert im.size == (240, 320)
