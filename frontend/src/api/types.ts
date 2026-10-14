@@ -77,12 +77,14 @@ export interface PredictionHistoryEntry extends PredictionHistoryItem {
  * Sent as the `metadata_json` multipart field with the image upload.
  */
 export interface PatientMetadata {
+  patient_reference?: string
   age: number
   sex: 'male' | 'female' | 'other'
   tobacco_use: boolean
   tobacco_type?: 'smoked' | 'smokeless' | 'both'
   tobacco_years?: number
   betel_quid_use: boolean
+  betel_quid_years?: number
   alcohol_use: boolean
   lesion_site:
     | 'buccal_mucosa'
@@ -91,10 +93,15 @@ export interface PatientMetadata {
     | 'palate'
     | 'floor_of_mouth'
     | 'lip'
-  lesion_duration_weeks: number
+    | 'retromolar_trigone'
+    | 'alveolar_ridge'
+    | 'other'
+  lesion_duration_weeks?: number
   pain: boolean
   bleeding: boolean
   prior_lesion_history: boolean
+  medical_history?: string
+  clinical_notes?: string
 }
 
 /** Authenticated user, from GET /me. */

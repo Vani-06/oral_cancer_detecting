@@ -12,7 +12,7 @@ from pathlib import Path
 from PIL import Image as PILImage, ImageOps, UnidentifiedImageError
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.units import inch
-from reportlab.lib.utils import ImageReader
+from reportlab.lib.utils import ImageReader, simpleSplit
 from reportlab.pdfgen import canvas
 
 from app.core.config import settings
@@ -31,25 +31,36 @@ DISCLAIMER = (
 
 # Same labels as METADATA_FIELD_LABELS in frontend/src/lib/metadataSchema.ts.
 METADATA_LABELS = {
+    "patient_reference": "Patient ID",
     "age": "Age",
     "sex": "Sex",
     "tobacco_use": "Tobacco use",
     "tobacco_type": "Tobacco type",
     "tobacco_years": "Years of tobacco use",
     "betel_quid_use": "Betel quid / areca nut",
+    "betel_quid_years": "Years of betel quid use",
     "alcohol_use": "Alcohol use",
     "lesion_site": "Lesion site",
     "lesion_duration_weeks": "Lesion duration (weeks)",
     "pain": "Pain",
     "bleeding": "Bleeding",
     "prior_lesion_history": "Prior oral lesion",
+    "medical_history": "Medical history",
+    "clinical_notes": "Clinical notes",
 }
 
+# Values that are enum keys (buccal_mucosa -> Buccal mucosa). Free text such
+# as clinical notes is printed exactly as entered.
+ENUM_FIELDS = {"sex", "tobacco_type", "lesion_site"}
+TEXT_WIDTH = PAGE_WIDTH - 2 * MARGIN
 
-def _format_metadata_value(value: object) -> str:
+
+def _format_metadata_value(key: str, value: object) -> str:
     if isinstance(value, bool):
         return "Yes" if value else "No"
-    return str(value).replace("_", " ").capitalize() if isinstance(value, str) else str(value)
+    if key in ENUM_FIELDS and isinstance(value, str):
+        return value.replace("_", " ").capitalize()
+    return str(value)
 
 
 def _draw_image_fit(c: canvas.Canvas, path: Path, x: float, y: float) -> bool:
@@ -123,13 +134,22 @@ def generate_report_pdf(prediction: Prediction, output_path: Path) -> None:
         c.setFont("Helvetica-Bold", 10)
         c.drawString(MARGIN, y, "Patient context")
         y -= 0.2 * inch
-        c.setFont("Helvetica", 9)
-        for key, value in prediction.metadata_json.items():
-            if y < MARGIN + 0.8 * inch:
-                break  # leave room for the disclaimer rather than overflow the page
+        # Known fields in form order, then anything unrecognised (older rows).
+        keys = [k for k in METADATA_LABELS if k in prediction.metadata_json]
+        keys += [k for k in prediction.metadata_json if k not in METADATA_LABELS]
+        for key in keys:
             label = METADATA_LABELS.get(key, key)
-            c.drawString(MARGIN, y, f"{label}: {_format_metadata_value(value)}")
-            y -= 0.16 * inch
+            text = f"{label}: {_format_metadata_value(key, prediction.metadata_json[key])}"
+            # Wrapped, and continued on a new page -- clinical notes can be
+            # long, and silently cutting fields off a medical report is worse
+            # than a second page.
+            for line in simpleSplit(text, "Helvetica", 9, TEXT_WIDTH):
+                if y < MARGIN + 0.8 * inch:
+                    c.showPage()
+                    y = PAGE_HEIGHT - MARGIN
+                c.setFont("Helvetica", 9)
+                c.drawString(MARGIN, y, line)
+                y -= 0.16 * inch
         y -= 0.2 * inch
 
     c.setFont("Helvetica-Oblique", 8)

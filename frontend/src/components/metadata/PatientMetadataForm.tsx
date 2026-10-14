@@ -6,6 +6,7 @@ import { BooleanField } from '@/components/ui/BooleanField'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
+import { Textarea } from '@/components/ui/Textarea'
 import {
   LESION_SITE_OPTIONS,
   SEX_OPTIONS,
@@ -30,6 +31,12 @@ interface PatientMetadataFormProps {
 /** Empty string -> undefined, so a blank number field reports "required"
  *  rather than "expected number, received NaN". */
 const numberField = { setValueAs: (v: string) => (v === '' ? undefined : Number(v)) }
+
+/** Trimmed, and blank -> undefined, so an untouched optional text field is
+ *  omitted from the payload rather than sent as "". */
+const textField = {
+  setValueAs: (v: string | undefined) => v?.trim() || undefined,
+}
 
 function Fieldset({
   legend,
@@ -66,6 +73,7 @@ export function PatientMetadataForm({
   // useWatch rather than watch(): it returns a value instead of a function, so
   // the React Compiler can still optimise this component.
   const usesTobacco = useWatch({ control, name: 'tobacco_use' })
+  const usesBetelQuid = useWatch({ control, name: 'betel_quid_use' })
 
   return (
     <form
@@ -74,6 +82,14 @@ export function PatientMetadataForm({
       className="flex flex-col gap-8"
     >
       <Fieldset legend="Demographics">
+        <Input
+          label="Patient ID (optional)"
+          hint="The hospital or clinic record number, as on the case sheet."
+          autoComplete="off"
+          maxLength={64}
+          error={errors.patient_reference?.message}
+          {...register('patient_reference', textField)}
+        />
         <div className="grid gap-4 sm:grid-cols-2">
           <Input
             label="Age"
@@ -133,7 +149,7 @@ export function PatientMetadataForm({
             name="betel_quid_use"
             render={({ field }) => (
               <BooleanField
-                label="Betel quid / areca nut use"
+                label="Betel quid / areca nut / pan"
                 value={field.value}
                 onChange={field.onChange}
                 error={errors.betel_quid_use?.message}
@@ -153,6 +169,21 @@ export function PatientMetadataForm({
             )}
           />
         </div>
+
+        {usesBetelQuid && (
+          <div className="border-brand-200 grid gap-4 border-l-2 pl-4 sm:grid-cols-2">
+            <Input
+              label="Years of betel quid use (optional)"
+              hint="Pan or gutkha containing tobacco also counts as smokeless tobacco."
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={100}
+              error={errors.betel_quid_years?.message}
+              {...register('betel_quid_years', numberField)}
+            />
+          </div>
+        )}
       </Fieldset>
 
       <Fieldset legend="Lesion">
@@ -164,7 +195,7 @@ export function PatientMetadataForm({
             {...register('lesion_site')}
           />
           <Input
-            label="Duration (weeks)"
+            label="Duration in weeks (optional)"
             type="number"
             inputMode="numeric"
             min={0}
@@ -212,6 +243,24 @@ export function PatientMetadataForm({
               error={errors.prior_lesion_history?.message}
             />
           )}
+        />
+      </Fieldset>
+
+      <Fieldset legend="History and notes">
+        <Textarea
+          label="Medical history (optional)"
+          hint="Systemic conditions and treatment, e.g. diabetes, hypertension, prior radiotherapy."
+          maxLength={1000}
+          error={errors.medical_history?.message}
+          {...register('medical_history', textField)}
+        />
+        <Textarea
+          label="Clinical notes (optional)"
+          hint="Examination findings, including any additional lesion sites."
+          rows={4}
+          maxLength={2000}
+          error={errors.clinical_notes?.message}
+          {...register('clinical_notes', textField)}
         />
       </Fieldset>
 
