@@ -123,12 +123,13 @@ class PredictionService:
             # if the directory is ever exposed by a misconfigured proxy.
             heatmap_filename = f"{uuid4().hex}.png"
             heatmap_path = self.upload_dir / "heatmaps" / heatmap_filename
-            label, confidence = inference_service.predict(
+            result = inference_service.predict(
                 image_path=self.upload_dir / filename,
                 heatmap_output_path=heatmap_path,
             )
-            prediction.prediction = label
-            prediction.confidence = confidence
+            prediction.prediction = result.label
+            prediction.confidence = result.confidence
+            prediction.dysplasia_grade = result.dysplasia_grade
             prediction.heatmap_path = heatmap_filename
             self.db.commit()
             self.db.refresh(prediction)

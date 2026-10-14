@@ -7,6 +7,7 @@
  */
 
 import type {
+  DysplasiaGrade,
   PredictionLabel,
   PredictionOutcome,
   PredictionHistoryEntry,
@@ -95,20 +96,20 @@ export function mockHeatmap(seed: number): string {
   )
 }
 
-/** Derive a stable label + confidence from a filename. */
+const MOCK_GRADES: DysplasiaGrade[] = ['mild', 'moderate', 'severe']
+
+/** Derive a stable grade + cancer label from a filename. */
 export function mockInference(filename: string): {
   prediction: PredictionLabel
-  confidence: number
+  dysplasia_grade: DysplasiaGrade
 } {
   const rand = seededRandom(hashString(filename))
   const isCancer = rand() > 0.5
-  // Keep confidences in a believable band; a model that returns 0.999 on a
-  // prototype dataset is a red flag, not a feature.
-  const confidence = 0.62 + rand() * 0.34
+  const grade = MOCK_GRADES[Math.floor(rand() * MOCK_GRADES.length)] ?? 'moderate'
 
   return {
     prediction: isCancer ? 'Cancer' : 'Non-Cancer',
-    confidence: Number(confidence.toFixed(2)),
+    dysplasia_grade: grade,
   }
 }
 
@@ -133,12 +134,12 @@ const SEED_SPECS: Array<{ hours: number; name: string }> = [
 
 function seedRecords(): MockRecord[] {
   return SEED_SPECS.map((spec, index) => {
-    const { prediction, confidence } = mockInference(spec.name)
+    const { prediction, dysplasia_grade } = mockInference(spec.name)
     const id = SEED_SPECS.length - index
     return {
       prediction_id: id,
       prediction,
-      confidence,
+      dysplasia_grade,
       heatmap_url: mockHeatmap(hashString(spec.name)),
       pdf_url: `/reports/${id}.pdf`,
       created_at: hoursAgo(spec.hours),
@@ -170,14 +171,14 @@ export function findRecord(id: number): MockRecord | undefined {
 }
 
 export function addRecord(file: File, imageUrl: string): MockRecord {
-  const { prediction, confidence } = mockInference(file.name)
+  const { prediction, dysplasia_grade } = mockInference(file.name)
   const id = nextId
   nextId += 1
 
   const record: MockRecord = {
     prediction_id: id,
     prediction,
-    confidence,
+    dysplasia_grade,
     heatmap_url: mockHeatmap(hashString(file.name)),
     pdf_url: `/reports/${id}.pdf`,
     created_at: new Date().toISOString(),
@@ -194,7 +195,7 @@ export function toHistoryEntry(record: MockRecord): PredictionHistoryEntry {
   return {
     prediction_id: record.prediction_id,
     prediction: record.prediction as PredictionHistoryEntry['prediction'],
-    confidence: record.confidence,
+    dysplasia_grade: record.dysplasia_grade,
     created_at: record.created_at,
     image_url: record.image_url,
   }

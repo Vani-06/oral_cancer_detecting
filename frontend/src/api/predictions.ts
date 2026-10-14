@@ -49,7 +49,7 @@ export async function uploadPrediction(
   return normalizeOutcome({
     prediction_id: response.prediction_id,
     prediction: response.prediction,
-    confidence: response.confidence,
+    dysplasia_grade: response.dysplasia_grade,
     heatmap_url: response.heatmap_url,
     pdf_url: response.pdf_url,
     created_at: response.created_at,

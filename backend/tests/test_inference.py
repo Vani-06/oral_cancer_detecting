@@ -20,35 +20,41 @@ from app.services import inference_service as inference_module
 from app.services import prediction_service as prediction_module
 
 
-@pytest.fixture(scope="module")
-def enabled_inference(tmp_root):
+GRADES = {"mild_dysplasia": 0, "moderate_dysplasia": 1, "severe_dysplasia": 2}
+
+
+def save_random_checkpoint(path, class_to_idx):
     torch.manual_seed(0)
     model = resnet50(weights=None)
-    model.fc = torch.nn.Linear(model.fc.in_features, 2)
+    model.fc = torch.nn.Linear(model.fc.in_features, len(class_to_idx))
     # Small head weights keep P(Cancer) strictly inside (0, 1). With default
     # init the untrained backbone's activations can saturate softmax to
     # exactly 1.0 in float32, which made the threshold test flaky.
     torch.nn.init.normal_(model.fc.weight, std=1e-4)
     torch.nn.init.zeros_(model.fc.bias)
-    ckpt = tmp_root / "random_model.pt"
     torch.save(
         {
             "state_dict": model.state_dict(),
-            "class_to_idx": {"Cancer": 0, "Non-Cancer": 1},
+            "class_to_idx": class_to_idx,
             "img_size": 224,
             "mean": [0.485, 0.456, 0.406],
             "std": [0.229, 0.224, 0.225],
         },
-        ckpt,
+        path,
     )
-    original_path, original_service = settings.MODEL_PATH, prediction_module.inference_service
-    settings.MODEL_PATH = str(ckpt)
+    return str(path)
+
+
+@pytest.fixture(scope="module")
+def enabled_inference(tmp_root):
+    original = settings.MODEL_PATH, settings.GRADING_MODEL_PATH, prediction_module.inference_service
+    settings.MODEL_PATH = save_random_checkpoint(tmp_root / "random_model.pt", {"Cancer": 0, "Non-Cancer": 1})
+    settings.GRADING_MODEL_PATH = save_random_checkpoint(tmp_root / "random_grading.pt", GRADES)
     service = inference_module.InferenceService()
-    assert service.enabled
+    assert service.enabled and service.grading_enabled
     prediction_module.inference_service = service
     yield service
-    prediction_module.inference_service = original_service
-    settings.MODEL_PATH = original_path
+    settings.MODEL_PATH, settings.GRADING_MODEL_PATH, prediction_module.inference_service = original
 
 
 def post(client, auth, content=None, metadata=None):
@@ -62,7 +68,6 @@ def post(client, auth, content=None, metadata=None):
 def test_inference_populates_result_and_report_link(client, auth, enabled_inference):
     body = post(client, auth, metadata=VALID_METADATA)
     assert body["prediction"] in {"Cancer", "Non-Cancer"}
-    assert 0.5 <= body["confidence"] <= 1.0
     assert body["is_pending_inference"] is False
     assert body["heatmap_url"] == f"/predictions/{body['prediction_id']}/heatmap"
     assert body["pdf_url"] == f"/reports/{body['prediction_id']}"
@@ -108,7 +113,6 @@ def test_cancer_threshold_controls_the_label(client, auth, enabled_inference, mo
     monkeypatch.setattr(settings, "CANCER_THRESHOLD", 1 - 1e-9)
     body = post(client, auth)
     assert body["prediction"] == "Non-Cancer"
-    assert 0.0 <= body["confidence"] <= 1.0
 
 
 def test_exif_rotated_photo_heatmap_matches_upright_orientation(client, auth, enabled_inference):
@@ -117,3 +121,47 @@ def test_exif_rotated_photo_heatmap_matches_upright_orientation(client, auth, en
     heatmap = client.get(body["heatmap_url"], headers=auth).content
     with Image.open(io.BytesIO(heatmap)) as im:
         assert im.size == (240, 320)
+
+
+def test_result_has_grade_then_cancer_and_never_a_score(client, auth, enabled_inference):
+    body = post(client, auth)
+    assert body["dysplasia_grade"] in {"mild", "moderate", "severe"}
+    assert body["prediction"] in {"Cancer", "Non-Cancer"}
+
+    pid = body["prediction_id"]
+    detail = client.get(f"/predictions/{pid}", headers=auth).json()
+    history = client.get("/predictions", headers=auth).json()
+    for payload in (body, detail, *history):
+        assert "confidence" not in payload, "model scores must never be sent to clients"
+    assert detail["dysplasia_grade"] == body["dysplasia_grade"]
+    assert next(h for h in history if h["prediction_id"] == pid)["dysplasia_grade"] == body["dysplasia_grade"]
+
+
+def test_grade_is_absent_without_a_grading_model(client, auth, enabled_inference, monkeypatch):
+    monkeypatch.setattr(enabled_inference, "grading_enabled", False)
+    body = post(client, auth)
+    assert body["prediction"] in {"Cancer", "Non-Cancer"}
+    assert body["dysplasia_grade"] is None
+
+
+def test_report_shows_grade_and_detection_but_no_score(tmp_root):
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    from app.services import report_service
+
+    lines = []
+    original = report_service.canvas.Canvas.drawString
+    report_service.canvas.Canvas.drawString = lambda self, x, y, text, *a, **k: (lines.append(text), original(self, x, y, text, *a, **k))[1]
+    try:
+        record = SimpleNamespace(
+            prediction_id=7, created_at=datetime(2026, 1, 1), prediction="Non-Cancer", confidence=0.93,
+            dysplasia_grade="severe", filename="missing.jpg", heatmap_path=None, metadata_json=None,
+        )
+        report_service.generate_report_pdf(record, tmp_root / "graded.pdf")
+    finally:
+        report_service.canvas.Canvas.drawString = original
+
+    assert "1. Dysplasia grade: Severe dysplasia" in lines
+    assert "2. Cancer detection: No cancer detected" in lines
+    assert not any("%" in line or "onfidence" in line for line in lines)

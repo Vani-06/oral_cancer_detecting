@@ -9,6 +9,12 @@ const STYLES: Record<Label, string> = {
   Pending: 'border-surface-border bg-slate-50 text-slate-500',
 }
 
+const LABELS: Record<Label, string> = {
+  Cancer: 'Cancer detected',
+  'Non-Cancer': 'No cancer detected',
+  Pending: 'Awaiting inference',
+}
+
 interface PredictionBadgeProps {
   prediction: Label
   size?: 'sm' | 'md'
@@ -29,7 +35,7 @@ export function PredictionBadge({
         className,
       )}
     >
-      {prediction === 'Pending' ? 'Awaiting inference' : prediction}
+      {LABELS[prediction]}
     </span>
   )
 }

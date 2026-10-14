@@ -33,7 +33,9 @@ class Prediction(Base):
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     image_path: Mapped[str] = mapped_column(Text, nullable=False)
     prediction: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Kept for audit and model evaluation; never sent to clients.
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    dysplasia_grade: Mapped[str | None] = mapped_column(String(16), nullable=True)
     heatmap_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

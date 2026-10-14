@@ -4,11 +4,12 @@ import { Link } from 'react-router-dom'
 import { ApiError } from '@/api/client'
 import { listPredictions } from '@/api/predictions'
 import type { PredictionHistoryEntry } from '@/api/types'
+import { GradeBadge } from '@/components/result/GradeBadge'
 import { PredictionBadge } from '@/components/result/PredictionBadge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Spinner } from '@/components/ui/Spinner'
-import { formatDateTime, formatPercent } from '@/lib/format'
+import { formatDateTime } from '@/lib/format'
 import { AuthorizedImage } from '@/components/ui/AuthorizedImage'
 
 export function HistoryPage() {
@@ -85,8 +86,8 @@ export function HistoryPage() {
               <thead>
                 <tr className="text-left text-slate-500">
                   <th className="py-3 pr-4 font-medium">Image</th>
-                  <th className="py-3 pr-4 font-medium">Prediction</th>
-                  <th className="py-3 pr-4 font-medium">Confidence</th>
+                  <th className="py-3 pr-4 font-medium">Dysplasia grade</th>
+                  <th className="py-3 pr-4 font-medium">Cancer detection</th>
                   <th className="py-3 pr-4 font-medium">Created</th>
                   <th className="py-3 text-right font-medium">Action</th>
                 </tr>
@@ -108,12 +109,14 @@ export function HistoryPage() {
                       )}
                     </td>
                     <td className="py-3 pr-4">
-                      <PredictionBadge prediction={item.prediction} size="sm" />
+                      {item.prediction === 'Pending' ? (
+                        <span className="text-slate-500">Pending</span>
+                      ) : (
+                        <GradeBadge grade={item.dysplasia_grade} size="sm" />
+                      )}
                     </td>
-                    <td className="py-3 pr-4 text-slate-700">
-                      {item.prediction === 'Pending'
-                        ? 'Pending'
-                        : formatPercent(item.confidence)}
+                    <td className="py-3 pr-4">
+                      <PredictionBadge prediction={item.prediction} size="sm" />
                     </td>
                     <td className="py-3 pr-4 text-slate-700">
                       {formatDateTime(item.created_at)}
