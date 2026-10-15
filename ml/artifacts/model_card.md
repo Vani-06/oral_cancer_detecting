@@ -1,6 +1,6 @@
 # ResNet-50 Oral Lesion Classifier -- Model Card
 
-**Recommended checkpoint: `resnet50_oral_cancer_v4.pt` (round 4).** It is a
+**Recommended checkpoint: `resnet50_oral_cancer_v7.pt` (round 7, see "Round 7" below).** Earlier text refers to round 4. It is a
 research model, not a validated diagnostic device. Enable it only with the
 limitations in "Round 4" understood -- in particular, cancer-detection
 sensitivity on the client's own photos cannot be measured with the data
@@ -281,6 +281,50 @@ default stays 0.5 until they make it.
 - Binary labels flatten a graded histopathology spectrum (all dysplasia is
   "Non-Cancer"); whether high-grade dysplasia should be flagged is a product
   question for the client.
+
+## Round 7 (resnet50_oral_cancer_v7.pt) -- corrected labels, shortcut fixes
+
+**Label errors in the Kaggle data.** 313 of the 323 photos in the Mendeley
+"Oral Images Dataset" (Chandrashekar H S, Geetha Kiran A, Murali S, Dinesh
+M S, Nanditha B R; DOI 10.17632/mhjyrn35p4.2; CC BY 4.0; collected with
+doctors in Karnataka) are also in the Kaggle dataset. Every disagreement
+goes one way: photos the original source files as *benign lesions* are in
+Kaggle's Cancer folder -- 52 of round 4's training "cancers" (about 1 in
+6), 8 validation and 12 test photos. `scripts/fix_labels.py` moves them to
+Non-Cancer (`data/*_fixed`, list in `data/external/relabelled.csv`).
+Earlier Kaggle test numbers in this card were scored against the
+uncorrected labels.
+
+**Shortcuts** (`scripts/probe_shortcuts.py`): the Kaggle healthy photos are
+mostly whole-mouth phone pictures and its cancers mostly clinical close-ups,
+so zooming into healthy test photos raised round 4's false Cancer calls
+from 1.5% to 20%; zooming out, glare, JPEG, borders and blur made it miss
+cancers (down to 69-77% caught). Round 7 trains with `--zoom-healthy 0.5`
+(close-up crops of healthy photos) and `--shortcut-edits` (those edits on
+both classes).
+
+`scripts/compare_models.py`, corrected labels, threshold 0.5:
+
+| | v4 | v5 (zoom only) | **v7** |
+|---|---|---|---|
+| Validation: cancers caught / false Cancer (selection set) | 82.3% / 9.7% | 85.5% / 13.3% | **87.1% / 8.8%** |
+| Kaggle test: cancers caught | 87.9% (51/58) | 89.7% | 84.5% (49/58) |
+| Kaggle test: non-cancer flagged | 11.7% (9/77) | 15.6% | 13.0% (10/77) |
+| Client held-out dysplasia flagged | 12.8% (5/39) | 5.1% | 12.8% (5/39) |
+| Healthy test photos zoomed to 40%, flagged | 23.4% | 9.1% | 6.5% |
+| External healthy cheek (5) / lichen planus (5) flagged | 3 / 5 | 1 / 5 | 4 / 4 |
+
+External = Mendeley fgjd95tcr8 example images (CC BY 4.0), never trained
+on; five each, so indicative only. v7 is chosen on validation (best on both
+columns; averaging v5+v7 or v4+v5+v7 was worse there). On 18 photos a user
+uploaded (no ground truth), v7 flagged all five that look like obvious
+cancers (v4 missed two) and cleared a textbook linea alba photo, but still
+flags most close-ups of normal cheek mucosa.
+
+**What would fix the rest:** close-up photos of normal and benign mucosa.
+No such set is openly downloadable: SMART intraoral images (AIKosh,
+restricted), Ayman et al. 9,201 images incl. 4,405 normal (Zenodo
+14571990, restricted, 24 GB), Warin et al. 300 normal (ethics approval).
 
 ## Stress test (October 2026) -- random images, harmless edits, non-oral uploads
 
