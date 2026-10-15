@@ -64,6 +64,11 @@ Predictions stay **Pending** until `MODEL_PATH` in `backend/.env` points at a
 trained checkpoint. Weights are not committed (`ml/artifacts/` is
 gitignored); train them with the scripts below or obtain them separately.
 
+Set `GATE_MODEL_PATH` too (built by `ml/scripts/build_photo_gate.py`): it
+refuses uploads that are not clinical photos of the mouth -- slides,
+screenshots, blank images -- which the cancer model would otherwise label
+anyway. See `ml/artifacts/model_card.md` for what each model can and cannot do.
+
 ## Training (from `ml/`)
 
 ```bash

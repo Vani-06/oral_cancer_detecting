@@ -11,6 +11,10 @@ Two models, both ResNet-50 checkpoints in the same format:
 - cancer detection (MODEL_PATH): Cancer / Non-Cancer, plus the Grad-CAM heatmap
 - dysplasia grading (GRADING_MODEL_PATH, optional): mild / moderate / severe
 
+plus an optional photo check (GATE_MODEL_PATH, a different format -- see
+ml/scripts/build_photo_gate.py) that refuses images which are not clinical
+photos of the mouth before either model sees them.
+
 If MODEL_PATH is unset or the checkpoint file doesn't exist, `enabled` is
 False and `predict()` is never called -- PredictionService leaves the record
 Pending exactly as it did before real inference existed. This is a
@@ -70,10 +74,54 @@ def _load_checkpoint(path_setting: str | None):
     return model, transform, class_to_idx
 
 
+def _open_photo(image_path: Path) -> Image.Image:
+    # Phone photos often store pixels sideways plus an EXIF "rotate" tag.
+    # Browsers honour the tag when displaying the original, so without
+    # this the model sees a rotated lesion and the heatmap overlay renders
+    # rotated relative to the photo next to it.
+    with Image.open(image_path) as im:
+        return ImageOps.exif_transpose(im).convert("RGB")
+
+
+class PhotoGate:
+    """Accepts an image only if its ImageNet ResNet-50 features are close to
+    those of the training photos: mean cosine distance to the k nearest is
+    at most the threshold fitted on validation photos."""
+
+    def __init__(self, path: Path) -> None:
+        checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+        self._model = resnet50(weights=None)
+        self._model.fc = torch.nn.Identity()
+        self._model.load_state_dict(checkpoint["backbone_state_dict"])
+        self._model.eval()
+        self._bank = checkpoint["bank"].float()
+        self._k = int(checkpoint["k"])
+        self.threshold = float(checkpoint["threshold"])
+        self._transform = transforms.Compose(
+            [
+                transforms.Resize((checkpoint["img_size"], checkpoint["img_size"])),
+                transforms.ToTensor(),
+                transforms.Normalize(checkpoint["mean"], checkpoint["std"]),
+            ]
+        )
+
+    def distance(self, image: Image.Image) -> float:
+        with torch.no_grad():
+            feature = self._model(self._transform(image).unsqueeze(0))[0]
+        feature = feature / feature.norm()
+        return float(1 - (self._bank @ feature).topk(self._k).values.mean())
+
+    def accepts(self, image: Image.Image) -> bool:
+        return self.distance(image) <= self.threshold
+
+
 class InferenceService:
     def __init__(self) -> None:
         self.enabled = False
         self.grading_enabled = False
+        self.gate: PhotoGate | None = None
+        if settings.GATE_MODEL_PATH and Path(settings.GATE_MODEL_PATH).is_file():
+            self.gate = PhotoGate(Path(settings.GATE_MODEL_PATH))
         self._model: torch.nn.Module | None = None
         self._transform: transforms.Compose | None = None
         self._idx_to_label: dict[int, str] | None = None
@@ -98,6 +146,10 @@ class InferenceService:
             logits = self._grading_model(self._grading_transform(image).unsqueeze(0))
         return self._idx_to_grade[int(logits.argmax(dim=1).item())]
 
+    def looks_like_oral_photo(self, image_path: Path) -> bool:
+        """True when no photo check is configured, or the check accepts it."""
+        return self.gate is None or self.gate.accepts(_open_photo(image_path))
+
     def predict(self, image_path: Path, heatmap_output_path: Path) -> InferenceResult:
         """Runs cancer detection + Grad-CAM and, if configured, dysplasia
         grading. Writes the heatmap overlay PNG to heatmap_output_path.
@@ -106,11 +158,7 @@ class InferenceService:
         """
         assert self._model is not None and self._transform is not None
 
-        # Phone photos often store pixels sideways plus an EXIF "rotate" tag.
-        # Browsers honour the tag when displaying the original, so without
-        # this the model sees a rotated lesion and the heatmap overlay renders
-        # rotated relative to the photo next to it.
-        image = ImageOps.exif_transpose(Image.open(image_path)).convert("RGB")
+        image = _open_photo(image_path)
         input_tensor = self._transform(image).unsqueeze(0)
 
         activations: dict[str, torch.Tensor] = {}

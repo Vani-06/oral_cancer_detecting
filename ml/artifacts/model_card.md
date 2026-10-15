@@ -282,6 +282,68 @@ default stays 0.5 until they make it.
   "Non-Cancer"); whether high-grade dysplasia should be flagged is a product
   question for the client.
 
+## Stress test (October 2026) -- random images, harmless edits, non-oral uploads
+
+`scripts/stress_test.py`, round 4 checkpoint, threshold 0.5. Nothing below
+was used for training or threshold choice except where stated.
+
+**Harmless edits change the answer for 3-10% of photos.** Each held-out
+photo was re-run after mirroring, rotating (90/180/10 degrees), quarter
+resolution, JPEG quality 25, +/-20% brightness and an 80% centre crop.
+Rotate-90 and cropping were worst (~10% of client holdout answers flipped).
+Averaging the model over flipped/rotated copies (test-time augmentation)
+looked better on the test sets but made **no difference on validation**
+(88.6% with or without), so it was not adopted -- adopting it would have
+meant choosing on test data.
+
+**Non-oral images got a confident-looking result.** With no "none of the
+above" output, 90% of histopathology slides, 97% of desktop wallpapers and
+100% of blank / noise / document images were labelled Non-Cancer -- false
+reassurance. The cancer model's own features separate these poorly (it
+rejected only about half at a usable cut-off).
+
+**Fix: a photo check before inference** (`scripts/build_photo_gate.py`,
+backend `GATE_MODEL_PATH`). ImageNet ResNet-50 features, mean cosine
+distance to the 5 nearest training photos, cut-off = 99.5th percentile of
+validation-photo distances. Built from oral photos only; the non-oral
+images are evaluation only.
+
+| | accepted | refused |
+|---|---|---|
+| Client holdout photos (39) | 100% | 0% |
+| Kaggle test photos (135) | 100% | 0% |
+| Histopathology slides (100) | 5% | **95%** |
+| Desktop wallpapers (37) | 0% | **100%** |
+| Blank / noise / pattern / document (16) | 0% | **100%** |
+
+By construction about 0.5% of genuine photos like the validation set will be
+refused (the user is asked for a clearer close-up). Weak spots: photos
+heavily degraded or rotated with black corners are refused more often
+(~80% of held-out client photos accepted after a 10-degree tilt with black
+corners), and the non-oral test set has no faces, skin, teeth or other
+body-part photos -- how the check treats those is unmeasured.
+
+## Dysplasia grading (mild / moderate / severe) -- not good enough to enable
+
+`scripts/train_grading.py`: ResNet-50, layer4 + head fine-tuned, 196 photos
+of 99 client patients with a histopathology grade (48 mild, 77 moderate,
+71 severe photos). 5-fold cross-validation grouped by patient: every
+patient graded once, by a model that never saw them.
+
+| | ImageNet start | Cancer-model (v4) start | Always "moderate" |
+|---|---|---|---|
+| Photo accuracy | 44.9% | 40.8% | 39.3% |
+| Balanced accuracy | 44.4% | 39.1% | 33.3% |
+| Quadratic weighted kappa | 0.25 | 0.06 | 0 |
+| Patient accuracy | 44.4% | 44.4% | ~39% |
+
+"Within one grade" (89%) is not reported as a success: always answering
+"moderate" scores 100% on it. The best model is barely better than guessing
+the commonest grade, so **no grading checkpoint is shipped** and the app
+shows "Grade unavailable". Grade is defined on histopathology, and the
+photo may simply not carry enough of that signal at this sample size; more
+graded cases, or grading from the slides themselves, are the options.
+
 ## Reproducing
 
 ```
@@ -291,4 +353,7 @@ ml/.venv/Scripts/python.exe scripts/prepare_client_cases.py <treatment.xlsx> <cl
 ml/.venv/Scripts/python.exe scripts/prepare_case_split.py
 ml/.venv/Scripts/python.exe scripts/train.py --epochs 15 --train-dir data/case_split/train --val-dir data/case_split/val --checkpoint-name resnet50_oral_cancer_v4.pt
 ml/.venv/Scripts/python.exe scripts/evaluate.py --checkpoint artifacts/resnet50_oral_cancer_v4.pt --client-eval-dir data/case_split/holdout
+ml/.venv/Scripts/python.exe scripts/stress_test.py
+ml/.venv/Scripts/python.exe scripts/build_photo_gate.py
+ml/.venv/Scripts/python.exe scripts/train_grading.py cv --init imagenet
 ```

@@ -165,3 +165,52 @@ def test_report_shows_grade_and_detection_but_no_score(tmp_root):
     assert "1. Dysplasia grade: Severe dysplasia" in lines
     assert "2. Cancer detection: No cancer detected" in lines
     assert not any("%" in line or "onfidence" in line for line in lines)
+
+
+@pytest.fixture
+def gated_inference(tmp_root, enabled_inference):
+    """The photo check built from a single reference photo with a tiny
+    threshold: exactly that photo is accepted, anything else is refused."""
+    reference = Image.open(io.BytesIO(jpeg_bytes(color=(190, 95, 95)))).convert("RGB")
+    torch.manual_seed(0)
+    backbone = resnet50(weights=None)
+    backbone.fc = torch.nn.Identity()
+    backbone.eval()
+    gate_path = tmp_root / "random_gate.pt"
+    torch.save({"backbone_state_dict": backbone.state_dict(), "bank": torch.zeros(1, 2048), "k": 1,
+                "threshold": 1e-4, "img_size": 224, "mean": [0.485, 0.456, 0.406],
+                "std": [0.229, 0.224, 0.225]}, gate_path)
+    gate = inference_module.PhotoGate(gate_path)
+    with torch.no_grad():
+        feature = backbone(gate._transform(reference).unsqueeze(0))[0]
+    gate._bank = (feature / feature.norm()).unsqueeze(0)
+    enabled_inference.gate = gate
+    yield enabled_inference
+    enabled_inference.gate = None
+
+
+def test_photo_check_refuses_non_oral_images_and_keeps_nothing(client, auth, gated_inference, tmp_root):
+    post(client, auth, content=jpeg_bytes(color=(190, 95, 95)))  # asserts 201
+
+    uploads_before = set((tmp_root / "uploads").iterdir())
+    history_before = client.get("/predictions", headers=auth).json()
+    files = {"file": ("lesion.jpg", jpeg_bytes(color=(10, 200, 30)), "image/jpeg")}
+    refused = client.post("/predict", headers=auth, files=files)
+    assert refused.status_code == 400
+    assert "does not look like a clinical photo of the mouth" in refused.json()["detail"]
+    assert set((tmp_root / "uploads").iterdir()) == uploads_before
+    assert client.get("/predictions", headers=auth).json() == history_before
+
+
+_ML = Path(__file__).resolve().parents[2] / "ml"
+_REAL_GATE = _ML / "artifacts" / "oral_photo_gate_v1.pt"
+_HOLDOUT = _ML / "data" / "case_split" / "holdout"
+
+
+@pytest.mark.skipif(not (_REAL_GATE.is_file() and _HOLDOUT.is_dir()), reason="trained gate or data not present")
+def test_real_photo_check_accepts_oral_photos_and_refuses_junk():
+    gate = inference_module.PhotoGate(_REAL_GATE)
+    photos = sorted(_HOLDOUT.glob("*.jpg"))[:6]
+    assert all(gate.accepts(Image.open(p).convert("RGB")) for p in photos)
+    junk = [Image.new("RGB", (640, 480), c) for c in [(255, 255, 255), (0, 0, 0), (230, 150, 150)]]
+    assert not any(gate.accepts(im) for im in junk)

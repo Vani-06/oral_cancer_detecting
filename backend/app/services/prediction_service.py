@@ -11,6 +11,11 @@ from app.core.config import settings
 from app.models import Prediction, Report, User
 from app.services.inference_service import inference_service
 
+NOT_AN_ORAL_PHOTO = (
+    "This image does not look like a clinical photo of the mouth, so it was not "
+    "analysed. Please upload a clear, close-up photo of the oral lesion."
+)
+
 # Far above any clinical photo (12-50 MP is typical; 108 MP phone sensors are
 # the outlier), but low enough that a crafted "decompression
 # bomb" -- a tiny file that expands to gigabytes -- is rejected before decode.
@@ -101,6 +106,11 @@ class PredictionService:
         self, user: User, file: UploadFile, metadata: dict | None = None
     ) -> Prediction:
         filename = self.save_image(file)
+        # Refused before anything is recorded: a result for an image that is
+        # not an oral photo would be meaningless, whichever label it got.
+        if not inference_service.looks_like_oral_photo(self.upload_dir / filename):
+            (self.upload_dir / filename).unlink(missing_ok=True)
+            raise ValueError(NOT_AN_ORAL_PHOTO)
         prediction = Prediction(
             user_id=user.id,
             filename=filename,
