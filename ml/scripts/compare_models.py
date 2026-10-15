@@ -44,8 +44,9 @@ def main():
     print(f"{'model':6s} | {'VALIDATION caught / false':>26s} | {'TEST caught':>13s} {'healthy flagged':>16s} | "
           f"{'client flagged':>14s} | {'zoomed healthy':>14s} | {'healthy cheek':>13s} {'lichen planus':>13s}")
     for name in sys.argv[1:]:
-        model = st.load_model(ML_DIR / "artifacts" / f"resnet50_oral_cancer_{name}.pt")
-        call = lambda ims: st.run(*model, ims)[0] >= 0.5  # noqa: E731
+        # "v5+v7" averages the checkpoints' P(Cancer).
+        models = [st.load_model(ML_DIR / "artifacts" / f"resnet50_oral_cancer_{n}.pt") for n in name.split("+")]
+        call = lambda ims: np.mean([st.run(*m, ims)[0] for m in models], 0) >= 0.5  # noqa: E731
         v, t = call(val_im), call(test_im)
         h, z, c, o = call(holdout), call(zoomed), call(cheek), call(olp)
         print(f"{name:6s} | {v[val_y].mean():12.1%} / {v[~val_y].mean():6.1%}     | "
