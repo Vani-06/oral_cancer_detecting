@@ -10,7 +10,7 @@
 export type PredictionLabel = 'Cancer' | 'Non-Cancer'
 
 /** Predicted grade of epithelial dysplasia; null when no grading model ran. */
-export type DysplasiaGrade = 'mild' | 'moderate' | 'severe'
+export type DysplasiaGrade = 'none' | 'mild' | 'moderate' | 'severe'
 
 /** Mirrors `PredictionUploadResponse`. What POST /predict returns today. */
 export interface PredictionUploadResponse {

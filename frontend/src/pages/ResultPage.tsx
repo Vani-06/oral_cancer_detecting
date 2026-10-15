@@ -6,6 +6,8 @@ import { getPrediction } from '@/api/predictions'
 import type { PredictionOutcome } from '@/api/types'
 import { DisclaimerBanner } from '@/components/layout/DisclaimerBanner'
 import { GradeBadge } from '@/components/result/GradeBadge'
+import { ResultScale } from '@/components/result/ResultScale'
+import { GRADE_STYLES, RISK_STYLES } from '@/components/result/styles'
 import { HeatmapViewer } from '@/components/result/HeatmapViewer'
 import { MetadataSummary } from '@/components/result/MetadataSummary'
 import { PredictionBadge } from '@/components/result/PredictionBadge'
@@ -178,19 +180,47 @@ function ResultView({
                 <div className="flex flex-col gap-1.5">
                   <dt className="text-xs text-slate-500">1. Dysplasia grade</dt>
                   <dd className="flex flex-col gap-1.5">
-                    <GradeBadge grade={outcome.dysplasia_grade} className="self-start" />
+                    <ResultScale
+                      label="Dysplasia grade"
+                      selected={outcome.dysplasia_grade}
+                      options={[
+                        { value: 'none', label: 'None', selectedClass: GRADE_STYLES.none },
+                        { value: 'mild', label: 'Mild', selectedClass: GRADE_STYLES.mild },
+                        {
+                          value: 'moderate',
+                          label: 'Moderate',
+                          selectedClass: GRADE_STYLES.moderate,
+                        },
+                        { value: 'severe', label: 'Severe', selectedClass: GRADE_STYLES.severe },
+                      ]}
+                    />
+                    {!outcome.dysplasia_grade && (
+                      <span className="text-xs text-slate-500">Grade unavailable</span>
+                    )}
                     {outcome.dysplasia_grade && (
                       <span className="text-xs text-slate-500">
                         Low reliability: matched the biopsy grade for about
-                        45% of patients in testing.
+                        40% of patients in testing.
                       </span>
                     )}
                   </dd>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <dt className="text-xs text-slate-500">2. Cancer screening</dt>
-                  <dd>
-                    <PredictionBadge prediction={outcome.prediction} />
+                  <dt className="text-xs text-slate-500">2. Cancer</dt>
+                  <dd className="flex flex-col gap-1.5">
+                    <ResultScale
+                      label="Cancer"
+                      selected={outcome.prediction}
+                      options={[
+                        { value: 'Cancer', label: 'Cancer', selectedClass: RISK_STYLES.high },
+                        { value: 'Non-Cancer', label: 'No cancer', selectedClass: RISK_STYLES.low },
+                      ]}
+                    />
+                    {outcome.prediction === 'Cancer' && (
+                      <span className="text-xs text-slate-500">
+                        Biopsy advised to confirm.
+                      </span>
+                    )}
                   </dd>
                 </div>
               </dl>

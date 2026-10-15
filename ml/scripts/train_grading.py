@@ -16,9 +16,16 @@ up front rather than picked per fold on the test fold, which would leak.
 writes a checkpoint in the format backend/app/services/inference_service.py
 loads.
 
+Every client patient had dysplasia, so a three-grade model must pick a grade
+even for a healthy mouth. `--with-normal` adds a fourth class, no dysplasia,
+taught from the Kaggle Non-Cancer photos (mostly healthy mouths). `holdout`
+then trains with the client's held-out patients (data/case_split/holdout)
+and the Kaggle test split left out, and reports how both are graded.
+
 Usage:
     .venv/Scripts/python.exe scripts/train_grading.py cv [--init v4|imagenet] [--folds 5]
-    .venv/Scripts/python.exe scripts/train_grading.py final [--init v4|imagenet]
+    .venv/Scripts/python.exe scripts/train_grading.py final [--init v4|imagenet] [--with-normal]
+    .venv/Scripts/python.exe scripts/train_grading.py holdout --with-normal [--init imagenet]
 """
 
 import argparse
@@ -41,6 +48,9 @@ ML_DIR = Path(__file__).resolve().parent.parent
 CASES_DIR = ML_DIR / "data" / "client_cases"
 ARTIFACTS_DIR = ML_DIR / "artifacts"
 V4_CHECKPOINT = ARTIFACTS_DIR / "resnet50_oral_cancer_v4.pt"
+KAGGLE_SPLIT_DIR = ML_DIR / "data" / "kaggle_split"
+HOLDOUT_MANIFEST = ML_DIR / "data" / "case_split" / "holdout" / "manifest.csv"
+NORMAL = "no_dysplasia"
 
 GRADES = ["mild_dysplasia", "moderate_dysplasia", "severe_dysplasia"]
 IMG_SIZE = 224
@@ -81,7 +91,17 @@ TRAIN_TF = transforms.Compose([
 EVAL_TF = transforms.Compose([transforms.ToTensor(), transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD)])
 
 
-def build_model(init: str) -> nn.Module:
+def load_rgb(path: Path) -> Image.Image:
+    with Image.open(path) as im:
+        return ImageOps.exif_transpose(im).convert("RGB").resize((IMG_SIZE, IMG_SIZE))
+
+
+def kaggle_images(splits, cls):
+    paths = sorted(p for s in splits for p in (KAGGLE_SPLIT_DIR / s / cls).glob("*"))
+    return [load_rgb(p) for p in paths]
+
+
+def build_model(init: str, n_classes: int = len(GRADES)) -> nn.Module:
     if init == "v4":
         # Start from the cancer model: its backbone has already adapted to the
         # client's photo style (camera, lighting), which ImageNet has not.
@@ -94,15 +114,16 @@ def build_model(init: str) -> nn.Module:
         p.requires_grad = False
     for p in model.layer4.parameters():
         p.requires_grad = True
-    model.fc = nn.Linear(model.fc.in_features, len(GRADES))
+    model.fc = nn.Linear(model.fc.in_features, n_classes)
     return model
 
 
 def train(model, images, labels, epochs, lr, seed):
     torch.manual_seed(seed)
-    counts = np.bincount(labels, minlength=len(GRADES))
-    # Mild is the smallest class; weight the loss so it is not ignored.
-    weights = torch.tensor(len(labels) / (len(GRADES) * np.maximum(counts, 1)), dtype=torch.float32)
+    n_classes = model.fc.out_features
+    counts = np.bincount(labels, minlength=n_classes)
+    # Mild is the smallest grade; weight the loss so no class is ignored.
+    weights = torch.tensor(len(labels) / (n_classes * np.maximum(counts, 1)), dtype=torch.float32)
     criterion = nn.CrossEntropyLoss(weight=weights)
     optimizer = optim.Adam([p for p in model.parameters() if p.requires_grad], lr=lr)
     loader = DataLoader(CachedImages(images, labels, TRAIN_TF), batch_size=16, shuffle=True,
@@ -161,7 +182,8 @@ def report(labels, groups, probs, title):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["cv", "final"])
+    ap.add_argument("mode", choices=["cv", "final", "holdout"])
+    ap.add_argument("--with-normal", action="store_true", help="add a no-dysplasia class from Kaggle Non-Cancer")
     ap.add_argument("--init", choices=["v4", "imagenet"], default="v4")
     ap.add_argument("--folds", type=int, default=5)
     ap.add_argument("--epochs", type=int, default=10)
@@ -174,7 +196,34 @@ def main():
     rows, images, labels, groups = load_cases()
     print(f"{len(images)} photos, {len(set(groups))} patients, per grade {np.bincount(labels).tolist()}")
 
-    if args.mode == "cv":
+    classes = ([NORMAL] if args.with_normal else []) + GRADES
+    if args.with_normal:
+        labels = labels + 1  # grades shift up one; 0 is no dysplasia
+
+    if args.mode == "holdout":
+        assert args.with_normal, "holdout evaluates the four-class model"
+        held = {int(r["case_id"]) for r in csv.DictReader(open(HOLDOUT_MANIFEST))}
+        test_mask = np.isin(groups, list(held))
+        normal = kaggle_images(["train", "val"], "Non-Cancer")
+        tr_images = [im for im, t in zip(images, test_mask) if not t] + normal
+        tr_labels = np.concatenate([labels[~test_mask], np.zeros(len(normal), dtype=int)])
+        print(f"train: {(~test_mask).sum()} client photos + {len(normal)} healthy; test: {test_mask.sum()} client photos")
+        model = train(build_model(args.init, len(classes)), tr_images, tr_labels, args.epochs, args.lr, args.seed)
+        result = {}
+        pred = predict_probs(model, [im for im, t in zip(images, test_mask) if t]).argmax(1)
+        true = labels[test_mask]
+        result["client_holdout"] = {
+            "photos": int(len(true)),
+            "grade_accuracy": float((pred == true).mean()),
+            "called_no_dysplasia": float((pred == 0).mean()),
+            "confusion_rows_true_cols_pred": confusion_matrix(true, pred, labels=range(len(classes))).tolist(),
+        }
+        for cls in ["Non-Cancer", "Cancer"]:
+            pred = predict_probs(model, kaggle_images(["test"], cls)).argmax(1)
+            result[f"kaggle_test_{cls}"] = {c: float((pred == i).mean()) for i, c in enumerate(classes)}
+        print(json.dumps(result, indent=2))
+        (ARTIFACTS_DIR / "grading_holdout_with_normal.json").write_text(json.dumps(result, indent=2))
+    elif args.mode == "cv":
         # Folds take ~12 min each on CPU; save each one so an interrupted run
         # resumes instead of starting over.
         partial = ARTIFACTS_DIR / f"grading_cv_{args.init}_partial.npz"
@@ -204,11 +253,14 @@ def main():
         partial.unlink()
         print("wrote", out)
     else:
-        model = train(build_model(args.init), images, labels, args.epochs, args.lr, args.seed)
-        ckpt = ARTIFACTS_DIR / "resnet50_dysplasia_grade_v1.pt"
+        if args.with_normal:
+            normal = kaggle_images(["train", "val"], "Non-Cancer")
+            images, labels = images + normal, np.concatenate([labels, np.zeros(len(normal), dtype=int)])
+        model = train(build_model(args.init, len(classes)), images, labels, args.epochs, args.lr, args.seed)
+        ckpt = ARTIFACTS_DIR / f"resnet50_dysplasia_grade_{'v2' if args.with_normal else 'v1'}.pt"
         torch.save({
             "state_dict": model.state_dict(),
-            "class_to_idx": {g: i for i, g in enumerate(GRADES)},
+            "class_to_idx": {g: i for i, g in enumerate(classes)},
             "img_size": IMG_SIZE,
             "mean": IMAGENET_MEAN,
             "std": IMAGENET_STD,

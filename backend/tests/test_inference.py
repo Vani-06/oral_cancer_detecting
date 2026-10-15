@@ -20,7 +20,7 @@ from app.services import inference_service as inference_module
 from app.services import prediction_service as prediction_module
 
 
-GRADES = {"mild_dysplasia": 0, "moderate_dysplasia": 1, "severe_dysplasia": 2}
+GRADES = {"no_dysplasia": 0, "mild_dysplasia": 1, "moderate_dysplasia": 2, "severe_dysplasia": 3}
 
 
 def save_random_checkpoint(path, class_to_idx):
@@ -125,7 +125,7 @@ def test_exif_rotated_photo_heatmap_matches_upright_orientation(client, auth, en
 
 def test_result_has_grade_then_cancer_and_never_a_score(client, auth, enabled_inference):
     body = post(client, auth)
-    assert body["dysplasia_grade"] in {"mild", "moderate", "severe"}
+    assert body["dysplasia_grade"] in {"none", "mild", "moderate", "severe"}
     assert body["prediction"] in {"Cancer", "Non-Cancer"}
 
     pid = body["prediction_id"]
@@ -163,7 +163,7 @@ def test_report_shows_grade_and_detection_but_no_score(tmp_root):
         report_service.canvas.Canvas.drawString = original
 
     assert "1. Dysplasia grade: Severe dysplasia" in lines
-    assert "2. Cancer screening: Not suspicious" in lines
+    assert "2. Cancer: No cancer" in lines
     assert report_service.GRADE_RELIABILITY_NOTE in lines
     # The record's 0.93 score must never be printed, in any form.
     assert not any("93" in line or "onfidence" in line for line in lines)
@@ -216,3 +216,28 @@ def test_real_photo_check_accepts_oral_photos_and_refuses_junk():
     assert all(gate.accepts(Image.open(p).convert("RGB")) for p in photos)
     junk = [Image.new("RGB", (640, 480), c) for c in [(255, 255, 255), (0, 0, 0), (230, 150, 150)]]
     assert not any(gate.accepts(im) for im in junk)
+
+
+def test_report_names_every_grade():
+    from app.services.report_service import grade_text
+
+    assert grade_text("none") == "No dysplasia"
+    assert grade_text("severe") == "Severe dysplasia"
+    assert grade_text(None) == "Not available"
+
+
+def test_cancer_result_never_gets_no_dysplasia(client, auth, enabled_inference, monkeypatch):
+    # Make "none" the grading model's top answer, then force a Cancer label.
+    none_idx = next(i for i, g in enumerate(GRADES) if g == "no_dysplasia")
+    with torch.no_grad():
+        enabled_inference._grading_model.fc.bias[none_idx] = 1e6
+    try:
+        monkeypatch.setattr(settings, "CANCER_THRESHOLD", 1e-9)
+        cancer = client.get(f"/predictions/{post(client, auth)['prediction_id']}", headers=auth).json()
+        monkeypatch.setattr(settings, "CANCER_THRESHOLD", 1 - 1e-9)
+        healthy = client.get(f"/predictions/{post(client, auth)['prediction_id']}", headers=auth).json()
+    finally:
+        with torch.no_grad():
+            enabled_inference._grading_model.fc.bias[none_idx] = 0.0
+    assert cancer["prediction"] == "Cancer" and cancer["dysplasia_grade"] in {"mild", "moderate", "severe"}
+    assert healthy["prediction"] == "Non-Cancer" and healthy["dysplasia_grade"] == "none"
