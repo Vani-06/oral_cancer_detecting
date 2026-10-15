@@ -163,8 +163,10 @@ def test_report_shows_grade_and_detection_but_no_score(tmp_root):
         report_service.canvas.Canvas.drawString = original
 
     assert "1. Dysplasia grade: Severe dysplasia" in lines
-    assert "2. Cancer detection: No cancer detected" in lines
-    assert not any("%" in line or "onfidence" in line for line in lines)
+    assert "2. Cancer screening: Not suspicious" in lines
+    assert report_service.GRADE_RELIABILITY_NOTE in lines
+    # The record's 0.93 score must never be printed, in any form.
+    assert not any("93" in line or "onfidence" in line for line in lines)
 
 
 @pytest.fixture

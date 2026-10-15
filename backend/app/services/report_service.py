@@ -55,12 +55,16 @@ ENUM_FIELDS = {"sex", "tobacco_type", "lesion_site"}
 TEXT_WIDTH = PAGE_WIDTH - 2 * MARGIN
 
 
+# From 5-fold patient-grouped cross-validation (ml/artifacts/model_card.md):
+# 44.9% of photos graded correctly vs 39.3% for always answering "moderate".
+GRADE_RELIABILITY_NOTE = "Low reliability: matched the biopsy grade for about 45% of patients in testing."
+
 def grade_text(grade: str | None) -> str:
     return f"{grade.capitalize()} dysplasia" if grade else "Not available"
 
 
 def cancer_text(label: str | None) -> str:
-    return {"Cancer": "Cancer detected", "Non-Cancer": "No cancer detected"}.get(label or "", "Pending")
+    return {"Cancer": "Suspicious: biopsy advised", "Non-Cancer": "Not suspicious"}.get(label or "", "Pending")
 
 
 def _format_metadata_value(key: str, value: object) -> str:
@@ -113,7 +117,12 @@ def generate_report_pdf(prediction: Prediction, output_path: Path) -> None:
     c.setFont("Helvetica-Bold", 12)
     c.drawString(MARGIN, y, f"1. Dysplasia grade: {grade_text(prediction.dysplasia_grade)}")
     y -= 0.24 * inch
-    c.drawString(MARGIN, y, f"2. Cancer detection: {cancer_text(prediction.prediction)}")
+    if prediction.dysplasia_grade:
+        c.setFont("Helvetica-Oblique", 9)
+        c.drawString(MARGIN + 0.2 * inch, y + 0.05 * inch, GRADE_RELIABILITY_NOTE)
+        c.setFont("Helvetica-Bold", 12)
+        y -= 0.2 * inch
+    c.drawString(MARGIN, y, f"2. Cancer screening: {cancer_text(prediction.prediction)}")
     y -= 0.45 * inch
 
     image_top = y

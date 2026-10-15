@@ -81,8 +81,8 @@ export function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <SummaryCard label="Total analyses" value={summary.total} />
             <SummaryCard label="Pending inference" value={summary.pending} />
-            <SummaryCard label="Cancer" value={summary.cancer} />
-            <SummaryCard label="Non-Cancer" value={summary.nonCancer} />
+            <SummaryCard label="Suspicious" value={summary.cancer} />
+            <SummaryCard label="Not suspicious" value={summary.nonCancer} />
           </div>
 
           <Card
