@@ -120,6 +120,43 @@ export const patientMetadataSchema = z
       })
     }
   })
+  // Years of a habit, or how long the lesion has been present, cannot exceed
+  // the patient's age. Mirrors PatientMetadata.consistent_history in the API.
+  .superRefine((values, ctx) => {
+    const habits = [
+      ['tobacco_years', values.tobacco_use ? values.tobacco_years : undefined],
+      ['betel_quid_years', values.betel_quid_use ? values.betel_quid_years : undefined],
+    ] as const
+    for (const [field, years] of habits) {
+      if (years !== undefined && years > values.age) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [field],
+          message: `Cannot be more than the patient's age (${values.age})`,
+        })
+      }
+    }
+    const weeks = values.lesion_duration_weeks
+    if (weeks !== undefined && weeks > (values.age + 1) * 52) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['lesion_duration_weeks'],
+        message: "Cannot be longer than the patient's age",
+      })
+    }
+  })
+  // The follow-up fields are hidden when the habit is answered "No", but the
+  // form keeps whatever was typed in them before; drop those leftovers so
+  // the record never says "no tobacco, 15 years of tobacco".
+  .transform((values) => {
+    const cleaned = { ...values }
+    if (!cleaned.tobacco_use) {
+      delete cleaned.tobacco_type
+      delete cleaned.tobacco_years
+    }
+    if (!cleaned.betel_quid_use) delete cleaned.betel_quid_years
+    return cleaned
+  })
 
 export type PatientMetadataValues = z.infer<typeof patientMetadataSchema>
 

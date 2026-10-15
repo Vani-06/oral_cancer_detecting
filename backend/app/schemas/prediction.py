@@ -65,7 +65,9 @@ class PatientMetadata(BaseModel):
     clinical notes), so a case recorded there can be entered here unchanged.
     """
 
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    # strict: the frontend sends real JSON numbers and booleans, so 1/0 for
+    # yes/no or true for a number of years is a malformed request, not data.
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, strict=True)
 
     patient_reference: str | None = Field(default=None, max_length=64)
     age: int = Field(ge=1, le=120)
@@ -101,9 +103,22 @@ class PatientMetadata(BaseModel):
         return v or None
 
     @model_validator(mode="after")
-    def tobacco_follow_ups(self) -> "PatientMetadata":
+    def consistent_history(self) -> "PatientMetadata":
         if self.tobacco_use and (self.tobacco_type is None or self.tobacco_years is None):
             raise ValueError("tobacco_type and tobacco_years are required when tobacco_use is true")
+        # Follow-ups to a habit answered "no" are leftovers (the form hides
+        # them but may still send them); drop them so the record and the PDF
+        # never say "no tobacco, 15 years of tobacco".
+        if not self.tobacco_use:
+            self.tobacco_type = self.tobacco_years = None
+        if not self.betel_quid_use:
+            self.betel_quid_years = None
+        for field in ("tobacco_years", "betel_quid_years"):
+            years = getattr(self, field)
+            if years is not None and years > self.age:
+                raise ValueError(f"{field} ({years}) cannot exceed the patient's age ({self.age})")
+        if self.lesion_duration_weeks is not None and self.lesion_duration_weeks > (self.age + 1) * 52:
+            raise ValueError("lesion_duration_weeks cannot exceed the patient's age")
         return self
 
 
