@@ -15,6 +15,7 @@ os.environ["UPLOAD_DIR"] = str(_TMP / "uploads")
 os.environ["REPORT_DIR"] = str(_TMP / "reports")
 os.environ["MODEL_PATH"] = ""
 os.environ["GRADING_MODEL_PATH"] = ""
+os.environ["GATE_MODEL_PATH"] = ""
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

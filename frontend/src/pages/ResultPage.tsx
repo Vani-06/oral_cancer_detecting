@@ -177,12 +177,18 @@ function ResultView({
               <dl className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1.5">
                   <dt className="text-xs text-slate-500">1. Dysplasia grade</dt>
-                  <dd>
-                    <GradeBadge grade={outcome.dysplasia_grade} />
+                  <dd className="flex flex-col gap-1.5">
+                    <GradeBadge grade={outcome.dysplasia_grade} className="self-start" />
+                    {outcome.dysplasia_grade && (
+                      <span className="text-xs text-slate-500">
+                        Low reliability: matched the biopsy grade for about
+                        45% of patients in testing.
+                      </span>
+                    )}
                   </dd>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <dt className="text-xs text-slate-500">2. Cancer detection</dt>
+                  <dt className="text-xs text-slate-500">2. Cancer screening</dt>
                   <dd>
                     <PredictionBadge prediction={outcome.prediction} />
                   </dd>

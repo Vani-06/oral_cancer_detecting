@@ -323,7 +323,7 @@ heavily degraded or rotated with black corners are refused more often
 corners), and the non-oral test set has no faces, skin, teeth or other
 body-part photos -- how the check treats those is unmeasured.
 
-## Dysplasia grading (mild / moderate / severe) -- not good enough to enable
+## Dysplasia grading (mild / moderate / severe) -- weak; enabled at the client's request
 
 `scripts/train_grading.py`: ResNet-50, layer4 + head fine-tuned, 196 photos
 of 99 client patients with a histopathology grade (48 mild, 77 moderate,
@@ -339,8 +339,18 @@ patient graded once, by a model that never saw them.
 
 "Within one grade" (89%) is not reported as a success: always answering
 "moderate" scores 100% on it. The best model is barely better than guessing
-the commonest grade, so **no grading checkpoint is shipped** and the app
-shows "Grade unavailable". Grade is defined on histopathology, and the
+the commonest grade. The client needs a grade shown, so the ImageNet-start
+model is trained on all 99 patients (`train_grading.py final --init
+imagenet`, `resnet50_dysplasia_grade_v1.pt`) and enabled, with "Low
+reliability: matched the biopsy grade for about 45% of patients in testing"
+printed next to every grade in the app and the PDF.
+
+A follow-up benchmark (`scripts/benchmark_grading.py`, 10x repeated 5-fold
+CV, per patient) found nothing better: case-sheet details alone (age, sex,
+habits, habit years, medical history, site and findings from the notes)
+reached kappa 0.15, but 13% of shuffled-grade runs scored as high, so it is
+indistinguishable from luck; frozen photo features reached 0.07; photo plus
+details 0.06. Grade is defined on histopathology, and the
 photo may simply not carry enough of that signal at this sample size; more
 graded cases, or grading from the slides themselves, are the options.
 
