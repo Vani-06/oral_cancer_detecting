@@ -70,10 +70,32 @@ def test_metadata_is_validated_at_the_api_boundary(client, auth):
         json.dumps({**VALID_METADATA, "lesion_site": "elbow"}),
         json.dumps({**VALID_METADATA, "unexpected_field": "x"}),
         json.dumps({**VALID_METADATA, "tobacco_type": None, "tobacco_years": None}),
+        # Yes/no and numbers must be real JSON booleans and integers.
+        json.dumps({**VALID_METADATA, "pain": 1}),
+        json.dumps({**VALID_METADATA, "age": "52"}),
+        json.dumps({**VALID_METADATA, "tobacco_years": True}),
+        # A habit or lesion cannot be older than the patient.
+        json.dumps({**VALID_METADATA, "age": 30, "tobacco_years": 31}),
+        json.dumps({**VALID_METADATA, "age": 30, "betel_quid_years": 40}),
+        json.dumps({**VALID_METADATA, "age": 5, "lesion_duration_weeks": 520}),
+        # Deeply nested input used to crash the request with a 500.
+        "[" * 50_000 + "]" * 50_000,
     ]
     for raw in bad_cases:
         resp = upload(client, auth, data={"metadata_json": raw})
-        assert resp.status_code == 400, f"accepted invalid metadata: {raw}"
+        assert resp.status_code == 400, f"accepted invalid metadata: {raw[:80]}"
+
+
+def test_follow_ups_to_a_no_answer_are_dropped(client, auth):
+    # The form hides these when the habit is "No" but can still send what
+    # was typed before; they must not be stored or printed on the report.
+    meta = {**VALID_METADATA, "tobacco_use": False, "tobacco_type": "smoked", "tobacco_years": 15,
+            "betel_quid_use": False, "betel_quid_years": 4}
+    resp = upload(client, auth, data={"metadata_json": json.dumps(meta)})
+    assert resp.status_code == 201, resp.text
+    stored = client.get(f"/predictions/{resp.json()['prediction_id']}", headers=auth).json()["metadata"]
+    assert stored["tobacco_use"] is False and stored["betel_quid_use"] is False
+    assert not {"tobacco_type", "tobacco_years", "betel_quid_years"} & stored.keys()
 
 
 def test_users_cannot_see_each_others_predictions(client):

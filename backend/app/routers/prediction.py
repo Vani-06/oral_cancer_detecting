@@ -30,12 +30,21 @@ def _report_url(record: Prediction) -> str | None:
     return None if record.is_pending else f"/reports/{record.prediction_id}"
 
 
+# Generously above the largest valid record (the free-text fields allow
+# ~3,000 characters); bounds the work json.loads does on hostile input.
+_MAX_METADATA_CHARS = 20_000
+
+
 def _parse_metadata(raw: str | None) -> dict | None:
     if not raw:
         return None
+    if len(raw) > _MAX_METADATA_CHARS:
+        raise ValueError("metadata_json is too large")
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, RecursionError) as exc:
+        # RecursionError: deeply nested input like "[[[[...]]]]" crashed the
+        # request with a 500 before this was caught.
         raise ValueError("metadata_json must be valid JSON") from exc
     try:
         return PatientMetadata.model_validate(data).model_dump(exclude_none=True)
