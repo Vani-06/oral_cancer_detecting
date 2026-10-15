@@ -3,7 +3,7 @@ from typing import Literal
 
 # Model scores are deliberately never part of any response: the app reports a
 # grade and a detection result, not a probability a clinician might over-read.
-DysplasiaGrade = Literal["mild", "moderate", "severe"]
+DysplasiaGrade = Literal["none", "mild", "moderate", "severe"]
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 

@@ -10,8 +10,8 @@ const STYLES: Record<Label, string> = {
 }
 
 const LABELS: Record<Label, string> = {
-  Cancer: 'Suspicious: biopsy advised',
-  'Non-Cancer': 'Not suspicious',
+  Cancer: 'Cancer',
+  'Non-Cancer': 'No cancer',
   Pending: 'Awaiting inference',
 }
 

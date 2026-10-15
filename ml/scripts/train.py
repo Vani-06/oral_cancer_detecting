@@ -22,12 +22,15 @@ Writes:
 
 import argparse
 import csv
+import io
+import random
 import time
 from pathlib import Path
 
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader, WeightedRandomSampler
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 from torchvision import datasets, transforms
 from torchvision.models import ResNet50_Weights, resnet50
 
@@ -78,6 +81,92 @@ def build_transforms():
         ]
     )
     return train_tf, eval_tf
+
+
+def _shortcut_edits(image):
+    """Randomised edits that never change the diagnosis but that the round-4
+    model reacted to (scripts/probe_shortcuts.py): zoomed out, borders,
+    textbook arrows, flash glare, a glove in frame, blur, low resolution,
+    JPEG, dim or bright light, colour cast, 90-degree rotations. Applied to
+    both classes, so none of them can stand in for the label."""
+    w, h = image.size
+    if random.random() < 0.25:  # zoomed out: lesion small in a skin-toned or plain surround
+        pad = int(min(w, h) * random.uniform(0.1, 0.5))
+        fill = random.choice([(0, 0, 0), (255, 255, 255), tuple(random.randint(120, 230) for _ in range(3))])
+        image = ImageOps.expand(image, border=pad, fill=fill)
+        w, h = image.size
+    draw = ImageDraw.Draw(image)
+    if random.random() < 0.15:  # textbook arrow
+        x0, y0 = random.uniform(0.1, 0.7) * w, random.uniform(0.1, 0.7) * h
+        x1, y1 = x0 + random.uniform(-0.2, 0.2) * w, y0 + random.uniform(0.05, 0.2) * h
+        draw.line((x0, y0, x1, y1), fill=random.choice(["black", "white", "yellow"]), width=max(2, w // 120))
+    if random.random() < 0.2:  # flash glare
+        for _ in range(random.randint(1, 4)):
+            r = min(w, h) * random.uniform(0.01, 0.04)
+            cx, cy = random.uniform(0, w), random.uniform(0, h)
+            draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(250, 250, 250))
+    if random.random() < 0.15:  # glove / instrument at an edge
+        x0, y0 = random.uniform(0.6, 0.85) * w, random.uniform(-0.1, 0.5) * h
+        shade = random.randint(200, 245)
+        draw.rounded_rectangle((x0, y0, w * 1.1, y0 + h * random.uniform(0.2, 0.5)), radius=int(w * 0.05),
+                               fill=(shade, shade, min(255, shade + 8)))
+    if random.random() < 0.2:
+        image = image.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.5, 3) * max(1, w / 400)))
+    if random.random() < 0.2:
+        f = random.uniform(0.15, 0.5)
+        image = image.resize((max(8, int(w * f)), max(8, int(h * f)))).resize((w, h))
+    if random.random() < 0.2:
+        buf = io.BytesIO()
+        image.save(buf, "JPEG", quality=random.randint(10, 40))
+        image = Image.open(io.BytesIO(buf.getvalue())).convert("RGB")
+    if random.random() < 0.3:
+        image = ImageEnhance.Brightness(image).enhance(random.uniform(0.6, 1.3))
+    if random.random() < 0.3:
+        image = ImageEnhance.Color(image).enhance(random.uniform(0.7, 1.5))
+    if random.random() < 0.2:
+        r, g, b = image.split()
+        k = random.uniform(0.88, 1.12)
+        image = Image.merge("RGB", (r.point(lambda v: min(255, int(v * k))), g, b.point(lambda v: min(255, int(v / k)))))
+    if random.random() < 0.3:
+        image = image.rotate(random.choice([90, 180, 270]), expand=True)
+    return image
+
+
+class ZoomHealthy(datasets.ImageFolder):
+    """Close-up crops of healthy photos, labelled healthy.
+
+    The Kaggle healthy photos are mostly whole-mouth phone pictures while its
+    cancer photos are mostly clinical close-ups, so a model can learn "close-up
+    means cancer": zooming into healthy test photos took false Cancer calls
+    from 1.5% to ~20% (October 2026 stress test). Any crop of a healthy mouth
+    is still healthy, so with probability `p` a healthy image becomes a
+    random 15-60% crop. Cancer images are never zoomed hard -- a crop could
+    cut the lesion out -- but every image gets a mild 70-100% crop so that
+    "looks zoomed" does not itself become a healthy cue.
+    """
+
+    def __init__(self, root, p: float, shortcut_edits: bool = False):
+        super().__init__(root)
+        self.p = p
+        self.shortcut_edits = shortcut_edits
+        self.healthy_idx = self.class_to_idx["Non-Cancer"]
+        tail = [
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomRotation(10),
+            transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
+            transforms.ToTensor(),
+            transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+        ]
+        self.mild = transforms.Compose([transforms.RandomResizedCrop(IMG_SIZE, scale=(0.7, 1.0)), *tail])
+        self.zoom = transforms.Compose([transforms.RandomResizedCrop(IMG_SIZE, scale=(0.15, 0.6)), *tail])
+
+    def __getitem__(self, index):
+        path, target = self.samples[index]
+        image = self.loader(path)
+        if self.shortcut_edits:
+            image = _shortcut_edits(image)
+        zoom = target == self.healthy_idx and random.random() < self.p
+        return (self.zoom if zoom else self.mild)(image), target
 
 
 def run_epoch(model, loader, criterion, optimizer, device, train: bool):
@@ -136,6 +225,14 @@ def main():
         ),
     )
     parser.add_argument(
+        "--zoom-healthy", type=float, default=0.0,
+        help="Probability of replacing a healthy training image with a close-up crop (see ZoomHealthy).",
+    )
+    parser.add_argument(
+        "--shortcut-edits", action="store_true",
+        help="Also apply diagnosis-preserving edits to both classes (see _shortcut_edits).",
+    )
+    parser.add_argument(
         "--unfreeze-layer3", action="store_true",
         help="Also fine-tune layer3, not just layer4+fc -- see build_model().",
     )
@@ -144,7 +241,10 @@ def main():
     device = torch.device("cpu")
     train_tf, eval_tf = build_transforms()
 
-    train_ds = datasets.ImageFolder(args.train_dir, transform=train_tf)
+    if args.zoom_healthy > 0:
+        train_ds = ZoomHealthy(args.train_dir, p=args.zoom_healthy, shortcut_edits=args.shortcut_edits)
+    else:
+        train_ds = datasets.ImageFolder(args.train_dir, transform=train_tf)
     val_ds = datasets.ImageFolder(args.val_dir, transform=eval_tf)
 
     # ImageFolder assigns class indices alphabetically -- confirm it matches

@@ -9,7 +9,7 @@ than couple the runtime service to the training toolchain's layout.
 
 Two models, both ResNet-50 checkpoints in the same format:
 - cancer detection (MODEL_PATH): Cancer / Non-Cancer, plus the Grad-CAM heatmap
-- dysplasia grading (GRADING_MODEL_PATH, optional): mild / moderate / severe
+- dysplasia grading (GRADING_MODEL_PATH, optional): none / mild / moderate / severe
 
 plus an optional photo check (GATE_MODEL_PATH, a different format -- see
 ml/scripts/build_photo_gate.py) that refuses images which are not clinical
@@ -39,6 +39,7 @@ _GRADCAM_ALPHA = 0.45
 
 # Grading checkpoint classes -> the short grade stored and shown.
 _GRADE_NAMES = {
+    "no_dysplasia": "none",  # four-class checkpoints (--with-normal)
     "mild_dysplasia": "mild",
     "moderate_dysplasia": "moderate",
     "severe_dysplasia": "severe",
@@ -49,7 +50,7 @@ _GRADE_NAMES = {
 class InferenceResult:
     label: str  # "Cancer" or "Non-Cancer"
     confidence: float  # probability of `label`; stored, never shown
-    dysplasia_grade: str | None  # "mild" / "moderate" / "severe", or None
+    dysplasia_grade: str | None  # "none" / "mild" / "moderate" / "severe", or None
 
 
 def _load_checkpoint(path_setting: str | None):
@@ -139,12 +140,19 @@ class InferenceService:
             self._idx_to_grade = {v: _GRADE_NAMES[k] for k, v in grade_to_idx.items()}
             self.grading_enabled = True
 
-    def _grade(self, image: Image.Image) -> str | None:
+    def _grade(self, image: Image.Image, cancer: bool) -> str | None:
         if not self.grading_enabled:
             return None
         with torch.no_grad():
-            logits = self._grading_model(self._grading_transform(image).unsqueeze(0))
-        return self._idx_to_grade[int(logits.argmax(dim=1).item())]
+            logits = self._grading_model(self._grading_transform(image).unsqueeze(0))[0]
+        if cancer:
+            # The grading model never saw carcinoma, so "none" next to a
+            # Cancer result is meaningless (it said "none" for 44% of Kaggle
+            # cancer test photos). Report the likeliest dysplasia grade.
+            for idx, grade in self._idx_to_grade.items():
+                if grade == "none":
+                    logits[idx] = float("-inf")
+        return self._idx_to_grade[int(logits.argmax().item())]
 
     def looks_like_oral_photo(self, image_path: Path) -> bool:
         """True when no photo check is configured, or the check accepts it."""
@@ -210,7 +218,7 @@ class InferenceService:
         return InferenceResult(
             label=self._idx_to_label[predicted_idx],
             confidence=confidence,
-            dysplasia_grade=self._grade(image),
+            dysplasia_grade=self._grade(image, cancer=predicted_idx == cancer_idx),
         )
 
     @staticmethod

@@ -87,7 +87,7 @@ export function HistoryPage() {
                 <tr className="text-left text-slate-500">
                   <th className="py-3 pr-4 font-medium">Image</th>
                   <th className="py-3 pr-4 font-medium">Dysplasia grade</th>
-                  <th className="py-3 pr-4 font-medium">Cancer screening</th>
+                  <th className="py-3 pr-4 font-medium">Cancer</th>
                   <th className="py-3 pr-4 font-medium">Created</th>
                   <th className="py-3 text-right font-medium">Action</th>
                 </tr>

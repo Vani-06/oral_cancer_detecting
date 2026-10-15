@@ -96,7 +96,7 @@ export function mockHeatmap(seed: number): string {
   )
 }
 
-const MOCK_GRADES: DysplasiaGrade[] = ['mild', 'moderate', 'severe']
+const MOCK_GRADES: DysplasiaGrade[] = ['none', 'mild', 'moderate', 'severe']
 
 /** Derive a stable grade + cancer label from a filename. */
 export function mockInference(filename: string): {
