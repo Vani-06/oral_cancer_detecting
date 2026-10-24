@@ -15,7 +15,7 @@ interface ResultScaleProps<T extends string> {
 
 /**
  * Every possible answer side by side, with the model's answer filled in and
- * the rest dimmed -- so a reader sees 'Severe' in the context of mild /
+ * the rest dimmed -- so a reader sees "Severe" in the context of mild /
  * moderate / severe, not as a lone word.
  */
 export function ResultScale<T extends string>({
@@ -24,7 +24,7 @@ export function ResultScale<T extends string>({
   selected,
 }: ResultScaleProps<T>) {
   return (
-    <ul aria-label={label} className='flex flex-wrap gap-2'>
+    <ul aria-label={label} className="flex flex-wrap gap-2">
       {options.map((option) => {
         const isSelected = option.value === selected
         return (
@@ -38,7 +38,7 @@ export function ResultScale<T extends string>({
                 : 'border-dashed border-slate-200 text-slate-400',
             )}
           >
-            {isSelected && <span className='sr-only'>Result: </span>}
+            {isSelected && <span className="sr-only">Result: </span>}
             {option.label}
           </li>
         )
