@@ -4,6 +4,8 @@ from typing import Literal
 # Model scores are deliberately never part of any response: the app reports a
 # grade and a detection result, not a probability a clinician might over-read.
 DysplasiaGrade = Literal["none", "mild", "moderate", "severe"]
+Assessment = Literal["cancer", "no_cancer", "inconclusive"]
+ReferenceStatus = Literal["used", "not_normal"]
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -78,6 +80,10 @@ class PatientMetadata(BaseModel):
     betel_quid_use: bool
     betel_quid_years: int | None = Field(default=None, ge=0, le=100)
     alcohol_use: bool
+    # Optional: which side the lesion and the habit are on. A lesion on the
+    # side where the patient holds pan / tobacco is reported as concordant.
+    lesion_side: Literal["left", "right", "midline"] | None = None
+    habit_side: Literal["left", "right", "both"] | None = None
     lesion_site: Literal[
         "buccal_mucosa",
         "tongue",
@@ -131,8 +137,11 @@ class PredictionUploadResponse(BaseModel):
     message: str
     created_at: str
     image_url: str | None = None
+    reference_image_url: str | None = None
     prediction: str = "Pending"
     dysplasia_grade: DysplasiaGrade | None = None
+    assessment: Assessment | None = None
+    reference_status: ReferenceStatus | None = None
     heatmap_url: str | None = None
     pdf_url: str | None = None
     is_pending_inference: bool = True
@@ -144,6 +153,8 @@ class PredictionResult(BaseModel):
     prediction_id: int
     prediction: str
     dysplasia_grade: DysplasiaGrade | None = None
+    assessment: Assessment | None = None
+    reference_status: ReferenceStatus | None = None
     heatmap_url: str | None = None
     pdf_url: str | None = None
 
@@ -154,6 +165,8 @@ class PredictionHistoryItem(BaseModel):
     prediction_id: int
     prediction: str
     dysplasia_grade: DysplasiaGrade | None = None
+    assessment: Assessment | None = None
+    reference_status: ReferenceStatus | None = None
     created_at: str
     image_url: str | None = None
 
@@ -164,10 +177,13 @@ class PredictionDetail(BaseModel):
     prediction_id: int
     prediction: str
     dysplasia_grade: DysplasiaGrade | None = None
+    assessment: Assessment | None = None
+    reference_status: ReferenceStatus | None = None
     heatmap_url: str | None = None
     pdf_url: str | None = None
     filename: str
     created_at: str
     image_url: str | None = None
+    reference_image_url: str | None = None
     is_pending_inference: bool
     metadata: dict | None = None

@@ -79,6 +79,21 @@ class Settings:
     # cancers. Choose with the clinical team using the validation table in
     # ml/artifacts/model_card.md -- never by tuning against held-out data.
     CANCER_THRESHOLD: float = float(os.getenv("CANCER_THRESHOLD", "0.5"))
+    # Three-way result: each photo is re-scored under 9 edits that should not
+    # change the diagnosis (see STABILITY_EDITS). At most STABILITY_NO_CANCER_MAX
+    # of them voting Cancer -> "no_cancer"; at least STABILITY_CANCER_MIN ->
+    # "cancer"; anything between -> "inconclusive". Chosen on the validation
+    # split (ml/scripts/reference_experiments.py): on the corrected test split
+    # it cut cancers called "no cancer" from 15.5% to 3.4%, 8.1% inconclusive.
+    STABILITY_NO_CANCER_MAX: int = int(os.getenv("STABILITY_NO_CANCER_MAX", "1"))
+    STABILITY_CANCER_MIN: int = int(os.getenv("STABILITY_CANCER_MIN", "5"))
+    # Same-patient reference: a lesion photo whose features are no further
+    # from the patient's own opposite-side photo than this is not called
+    # "cancer" outright (it becomes "inconclusive"). Provisional: 90th
+    # percentile of left-half vs mirrored-right-half distance in healthy
+    # photos (ml/scripts/asymmetry_experiment.py); recalibrate on paired
+    # pilot photos.
+    REFERENCE_SAME_AS_NORMAL_MAX: float = float(os.getenv("REFERENCE_SAME_AS_NORMAL_MAX", "0.56"))
 
     CORS_ORIGINS_RAW: str = os.getenv(
         "CORS_ORIGINS",
@@ -112,6 +127,8 @@ class Settings:
             raise RuntimeError("MAX_FILE_SIZE_MB must be positive")
         if not 0.0 < self.CANCER_THRESHOLD < 1.0:
             raise RuntimeError("CANCER_THRESHOLD must be strictly between 0 and 1")
+        if not 0 <= self.STABILITY_NO_CANCER_MAX < self.STABILITY_CANCER_MIN <= 9:
+            raise RuntimeError("Need 0 <= STABILITY_NO_CANCER_MAX < STABILITY_CANCER_MIN <= 9")
 
 
 settings = Settings()

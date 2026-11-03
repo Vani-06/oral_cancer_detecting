@@ -12,6 +12,7 @@ export function PredictPage() {
   const navigate = useNavigate()
 
   const [file, setFile] = useState<File | null>(null)
+  const [referenceFile, setReferenceFile] = useState<File | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -36,7 +37,7 @@ export function PredictPage() {
     try {
       // Metadata is sent with the image and also carried through navigation so
       // the result is immediately useful before a reload.
-      const outcome = await uploadPrediction(file, metadata)
+      const outcome = await uploadPrediction(file, metadata, referenceFile)
       navigate(`/predictions/${outcome.prediction_id}`, {
         state: { outcome, metadata },
       })
@@ -55,22 +56,42 @@ export function PredictPage() {
       <div>
         <h1 className="text-xl font-semibold text-slate-900">New analysis</h1>
         <p className="text-sm text-slate-600">
-          Upload an oral lesion image and record the patient context.
+          Upload an oral lesion image and record the patient context. Adding a
+          photo of the same site on the patient's healthy opposite side lets the
+          analysis compare the lesion with their own normal tissue.
         </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-        <Card title="Lesion image">
-          <ImageDropzone
-            file={file}
-            onFileChange={(next) => {
-              setFile(next)
-              if (next) setFileError(null)
-            }}
-            error={fileError}
-            disabled={submitting}
-          />
-        </Card>
+        <div className="flex flex-col gap-6">
+          <Card title="Lesion image">
+            <ImageDropzone
+              file={file}
+              onFileChange={(next) => {
+                setFile(next)
+                if (next) setFileError(null)
+              }}
+              error={fileError}
+              disabled={submitting}
+            />
+          </Card>
+
+          <Card title="Opposite side (optional)">
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-slate-600">
+                Photograph the matching site on the other side of the mouth --
+                for a left cheek lesion, the healthy right cheek. Use the same
+                phone, light and distance as the lesion photo.
+              </p>
+              <ImageDropzone
+                file={referenceFile}
+                onFileChange={setReferenceFile}
+                disabled={submitting}
+                prompt="Drop the opposite-side photo here, or click to browse"
+              />
+            </div>
+          </Card>
+        </div>
 
         <Card title="Patient metadata">
           <PatientMetadataForm

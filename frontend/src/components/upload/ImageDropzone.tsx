@@ -23,6 +23,8 @@ interface ImageDropzoneProps {
   /** Error owned by the parent, e.g. "an image is required" on submit. */
   error?: string | null
   disabled?: boolean
+  /** Call to action shown in the empty drop area. */
+  prompt?: string
 }
 
 export function ImageDropzone({
@@ -30,6 +32,7 @@ export function ImageDropzone({
   onFileChange,
   error,
   disabled = false,
+  prompt = 'Drop a lesion image here, or click to browse',
 }: ImageDropzoneProps) {
   const inputId = useId()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -155,7 +158,7 @@ export function ImageDropzone({
               />
             </svg>
             <span className="text-sm font-medium text-slate-700">
-              Drop a lesion image here, or click to browse
+              {prompt}
             </span>
             <span className="text-xs text-slate-500">
               {ALLOWED_EXTENSIONS.join(', ')} · up to {MAX_FILE_SIZE_MB} MB

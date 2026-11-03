@@ -163,6 +163,8 @@ def test_report_keeps_long_notes_on_extra_pages(tmp_root):
         dysplasia_grade="moderate",
         filename="missing.jpg",
         heatmap_path=None,
+        assessment=None,
+        reference_status=None,
         metadata_json={**CASE_SHEET_METADATA, "clinical_notes": "word " * 399},
     )
     out = tmp_root / "long-notes.pdf"

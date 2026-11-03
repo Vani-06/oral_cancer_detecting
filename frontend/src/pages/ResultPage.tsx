@@ -121,6 +121,17 @@ function ResultView({
   // reload or when opened from history, the server's stored copy is used.
   const patientContext = metadata ?? outcome.metadata ?? undefined
 
+
+  // Informational only: it does not change the assessment.
+  const sides = outcome.metadata
+  const habitSideConcordant =
+    (sides?.lesion_side === 'left' || sides?.lesion_side === 'right') &&
+    (sides.habit_side === sides.lesion_side || sides.habit_side === 'both')
+
+  // Older analyses have no three-way assessment; derive it from the label.
+  const cancerResult =
+    outcome.assessment ??
+    (outcome.prediction === 'Cancer' ? 'cancer' : outcome.prediction === 'Non-Cancer' ? 'no_cancer' : null)
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -138,7 +149,10 @@ function ResultView({
         {!outcome.is_pending_inference && (
           <div className="flex flex-wrap items-center gap-2">
             <GradeBadge grade={outcome.dysplasia_grade} />
-            <PredictionBadge prediction={outcome.prediction} />
+            <PredictionBadge
+              prediction={outcome.prediction}
+              assessment={outcome.assessment}
+            />
           </div>
         )}
       </div>
@@ -210,16 +224,56 @@ function ResultView({
                   <dd className="flex flex-col gap-1.5">
                     <ResultScale
                       label="Cancer"
-                      selected={outcome.prediction}
+                      selected={cancerResult}
                       options={[
-                        { value: 'Cancer', label: 'Cancer', selectedClass: RISK_STYLES.high },
-                        { value: 'Non-Cancer', label: 'No cancer', selectedClass: RISK_STYLES.low },
+                        { value: 'cancer', label: 'Cancer', selectedClass: RISK_STYLES.high },
+                        ...(outcome.assessment
+                          ? [
+                              {
+                                value: 'inconclusive' as const,
+                                label: 'Inconclusive',
+                                selectedClass: RISK_STYLES.moderate,
+                              },
+                            ]
+                          : []),
+                        { value: 'no_cancer', label: 'No cancer', selectedClass: RISK_STYLES.low },
                       ]}
                     />
-                    {outcome.prediction === 'Cancer' && (
+                    {cancerResult === 'cancer' && (
                       <span className="text-xs text-slate-500">
                         Biopsy advised to confirm.
                       </span>
+                    )}
+                    {cancerResult === 'inconclusive' && (
+                      <span className="text-xs text-slate-500">
+                        The answer changed when the photo was slightly altered
+                        (angle, light, compression), so no call is made. Retake
+                        a clear close-up, or refer for examination.
+                      </span>
+                    )}
+                    {outcome.reference_status === 'used' && (
+                      <span className="text-xs text-slate-500">
+                        Compared with the patient's own opposite-side photo.
+                      </span>
+                    )}
+                    {outcome.reference_status === 'not_normal' && (
+                      <span className="text-xs text-slate-500">
+                        The opposite-side photo did not look normal either.
+                        Examine both sides.
+                      </span>
+                    )}
+                    {habitSideConcordant && (
+                      <span className="text-xs text-slate-500">
+                        Lesion is on the side where the patient holds pan /
+                        tobacco.
+                      </span>
+                    )}
+                    {outcome.reference_image_url && (
+                      <AuthorizedImage
+                        src={outcome.reference_image_url}
+                        alt="Opposite-side reference photo"
+                        className="border-surface-border mt-1 h-20 w-20 self-start rounded-md border object-cover"
+                      />
                     )}
                   </dd>
                 </div>

@@ -157,6 +157,7 @@ def test_report_shows_grade_and_detection_but_no_score(tmp_root):
         record = SimpleNamespace(
             prediction_id=7, created_at=datetime(2026, 1, 1), prediction="Non-Cancer", confidence=0.93,
             dysplasia_grade="severe", filename="missing.jpg", heatmap_path=None, metadata_json=None,
+            assessment="no_cancer", reference_status="used",
         )
         report_service.generate_report_pdf(record, tmp_root / "graded.pdf")
     finally:
@@ -165,6 +166,7 @@ def test_report_shows_grade_and_detection_but_no_score(tmp_root):
     assert "1. Dysplasia grade: Severe dysplasia" in lines
     assert "2. Cancer: No cancer" in lines
     assert report_service.GRADE_RELIABILITY_NOTE in lines
+    assert report_service.REFERENCE_NOTES["used"] in lines
     # The record's 0.93 score must never be printed, in any form.
     assert not any("93" in line or "onfidence" in line for line in lines)
 
@@ -241,3 +243,68 @@ def test_cancer_result_never_gets_no_dysplasia(client, auth, enabled_inference, 
             enabled_inference._grading_model.fc.bias[none_idx] = 0.0
     assert cancer["prediction"] == "Cancer" and cancer["dysplasia_grade"] in {"mild", "moderate", "severe"}
     assert healthy["prediction"] == "Non-Cancer" and healthy["dysplasia_grade"] == "none"
+
+
+def jpeg_of(color):
+    return jpeg_bytes(color=color)
+
+
+def post_pair(client, auth, lesion, reference):
+    files = {"file": ("lesion.jpg", lesion, "image/jpeg"), "reference_file": ("other_side.jpg", reference, "image/jpeg")}
+    return client.post("/predict", headers=auth, files=files)
+
+
+def test_three_way_assessment_follows_the_vote_thresholds(client, auth, enabled_inference, monkeypatch):
+    # Every edit votes Cancer at a near-zero threshold, none at a near-one.
+    monkeypatch.setattr(settings, "CANCER_THRESHOLD", 1e-9)
+    assert client.get(f"/predictions/{post(client, auth)['prediction_id']}", headers=auth).json()["assessment"] == "cancer"
+    monkeypatch.setattr(settings, "CANCER_THRESHOLD", 1 - 1e-9)
+    assert client.get(f"/predictions/{post(client, auth)['prediction_id']}", headers=auth).json()["assessment"] == "no_cancer"
+
+
+def test_reference_photo_is_stored_and_private(client, auth, enabled_inference):
+    resp = post_pair(client, auth, jpeg_of((190, 95, 95)), jpeg_of((185, 100, 100)))
+    assert resp.status_code == 201, resp.text
+    body = client.get(f"/predictions/{resp.json()['prediction_id']}", headers=auth).json()
+    assert body["reference_status"] in {"used", "not_normal"}
+    assert body["reference_image_url"].endswith("/reference-image")
+    assert client.get(body["reference_image_url"], headers=auth).status_code == 200
+    assert client.get(body["reference_image_url"], headers=register(client)).status_code == 404
+
+
+def test_reference_never_turns_a_result_into_no_cancer(enabled_inference, monkeypatch):
+    image = Image.new("RGB", (64, 64), (190, 95, 95))
+    # Lesion photo: inconclusive (3 of 9 edits vote Cancer); normal reference.
+    votes = iter([3, 0])
+    monkeypatch.setattr(enabled_inference, "_cancer_votes", lambda im: next(votes))
+    monkeypatch.setattr(enabled_inference, "_features", lambda im: torch.ones(4) / 2)  # identical photos
+    assert enabled_inference._assess(image, image) == ("inconclusive", "used")
+    # Cancer call, but no different from the patient's own normal side -> refer.
+    votes = iter([9, 0])
+    assert enabled_inference._assess(image, image) == ("inconclusive", "used")
+    # Both sides look alike and both look abnormal: not lesion-specific -> refer.
+    votes = iter([9, 6])
+    assert enabled_inference._assess(image, image) == ("inconclusive", "not_normal")
+    # Lesion clearly more different than the patient's other side: call stands.
+    features = iter([torch.tensor([1.0, 0.0]), torch.tensor([0.0, 1.0])])
+    monkeypatch.setattr(enabled_inference, "_features", lambda im: next(features))
+    votes = iter([9, 6])
+    assert enabled_inference._assess(image, image) == ("cancer", "not_normal")
+
+
+def test_non_oral_reference_photo_is_refused_and_nothing_kept(client, auth, gated_inference, tmp_root):
+    uploads_before = set((tmp_root / "uploads").iterdir())
+    resp = post_pair(client, auth, jpeg_bytes(color=(190, 95, 95)), jpeg_bytes(color=(10, 200, 30)))
+    assert resp.status_code == 400
+    assert "opposite-side photo" in resp.json()["detail"]
+    assert set((tmp_root / "uploads").iterdir()) == uploads_before
+
+
+def test_habit_side_concordance():
+    from app.services.report_service import habit_side_concordant
+
+    assert habit_side_concordant({"lesion_side": "left", "habit_side": "left"})
+    assert habit_side_concordant({"lesion_side": "right", "habit_side": "both"})
+    assert not habit_side_concordant({"lesion_side": "left", "habit_side": "right"})
+    assert not habit_side_concordant({"lesion_side": "midline", "habit_side": "both"})
+    assert not habit_side_concordant(None)

@@ -27,6 +27,9 @@ function normalizeOutcome(outcome: PredictionOutcome): PredictionOutcome {
     heatmap_url: outcome.heatmap_url
       ? resolveUrl(outcome.heatmap_url)
       : outcome.heatmap_url,
+    reference_image_url: outcome.reference_image_url
+      ? resolveUrl(outcome.reference_image_url)
+      : outcome.reference_image_url,
     pdf_url: outcome.pdf_url ? resolveUrl(outcome.pdf_url) : outcome.pdf_url,
   }
 }
@@ -34,11 +37,13 @@ function normalizeOutcome(outcome: PredictionOutcome): PredictionOutcome {
 export async function uploadPrediction(
   file: File,
   metadata?: PatientMetadata,
+  referenceFile?: File | null,
 ): Promise<PredictionOutcome> {
   if (USE_MOCKS) return mocks.uploadPrediction(file, metadata)
 
   const form = new FormData()
   form.append('file', file)
+  if (referenceFile) form.append('reference_file', referenceFile)
 
   if (SEND_METADATA && metadata) {
     form.append('metadata_json', JSON.stringify(metadata))
@@ -50,6 +55,9 @@ export async function uploadPrediction(
     prediction_id: response.prediction_id,
     prediction: response.prediction,
     dysplasia_grade: response.dysplasia_grade,
+    assessment: response.assessment,
+    reference_status: response.reference_status,
+    reference_image_url: response.reference_image_url ?? null,
     heatmap_url: response.heatmap_url,
     pdf_url: response.pdf_url,
     created_at: response.created_at,

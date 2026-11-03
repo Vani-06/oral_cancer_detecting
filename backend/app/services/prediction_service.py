@@ -11,6 +11,11 @@ from app.core.config import settings
 from app.models import Prediction, Report, User
 from app.services.inference_service import inference_service
 
+NOT_AN_ORAL_REFERENCE = (
+    "The opposite-side photo does not look like a clinical photo of the mouth. "
+    "Please photograph the same site on the patient's other side, or leave it out."
+)
+
 NOT_AN_ORAL_PHOTO = (
     "This image does not look like a clinical photo of the mouth, so it was not "
     "analysed. Please upload a clear, close-up photo of the oral lesion."
@@ -103,18 +108,30 @@ class PredictionService:
             raise ValueError("The uploaded file is not a readable image.") from exc
 
     def create_prediction(
-        self, user: User, file: UploadFile, metadata: dict | None = None
+        self,
+        user: User,
+        file: UploadFile,
+        metadata: dict | None = None,
+        reference_file: UploadFile | None = None,
     ) -> Prediction:
         filename = self.save_image(file)
+        reference = self.save_image(reference_file) if reference_file is not None else None
+        saved = [self.upload_dir / f for f in (filename, reference) if f]
+        checks = [(saved[0], NOT_AN_ORAL_PHOTO)]
+        if reference:
+            checks.append((saved[1], NOT_AN_ORAL_REFERENCE))
         # Refused before anything is recorded: a result for an image that is
         # not an oral photo would be meaningless, whichever label it got.
-        if not inference_service.looks_like_oral_photo(self.upload_dir / filename):
-            (self.upload_dir / filename).unlink(missing_ok=True)
-            raise ValueError(NOT_AN_ORAL_PHOTO)
+        for path, message in checks:
+            if not inference_service.looks_like_oral_photo(path):
+                for p in saved:
+                    p.unlink(missing_ok=True)
+                raise ValueError(message)
         prediction = Prediction(
             user_id=user.id,
             filename=filename,
             image_path=str(self.upload_dir / filename),
+            reference_filename=reference,
             metadata_json=metadata,
         )
         self.db.add(prediction)
@@ -136,10 +153,13 @@ class PredictionService:
             result = inference_service.predict(
                 image_path=self.upload_dir / filename,
                 heatmap_output_path=heatmap_path,
+                reference_path=self.upload_dir / reference if reference else None,
             )
             prediction.prediction = result.label
             prediction.confidence = result.confidence
             prediction.dysplasia_grade = result.dysplasia_grade
+            prediction.assessment = result.assessment
+            prediction.reference_status = result.reference_status
             prediction.heatmap_path = heatmap_filename
             self.db.commit()
             self.db.refresh(prediction)

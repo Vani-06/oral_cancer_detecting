@@ -1,4 +1,4 @@
-import type { PredictionOutcome } from '@/api/types'
+import type { Assessment, PredictionOutcome } from '@/api/types'
 import { cn } from '@/lib/cn'
 
 type Label = PredictionOutcome['prediction']
@@ -9,6 +9,9 @@ const STYLES: Record<Label, string> = {
   Pending: 'border-surface-border bg-slate-50 text-slate-500',
 }
 
+const INCONCLUSIVE_STYLE =
+  'border-risk-moderate-border bg-risk-moderate-bg text-risk-moderate'
+
 const LABELS: Record<Label, string> = {
   Cancer: 'Cancer',
   'Non-Cancer': 'No cancer',
@@ -17,12 +20,15 @@ const LABELS: Record<Label, string> = {
 
 interface PredictionBadgeProps {
   prediction: Label
+  /** Three-way result, when the analysis produced one. */
+  assessment?: Assessment | null
   size?: 'sm' | 'md'
   className?: string
 }
 
 export function PredictionBadge({
   prediction,
+  assessment,
   size = 'md',
   className,
 }: PredictionBadgeProps) {
@@ -31,11 +37,11 @@ export function PredictionBadge({
       className={cn(
         'inline-flex items-center rounded-full border font-semibold',
         size === 'sm' ? 'px-2.5 py-0.5 text-xs' : 'px-3 py-1 text-sm',
-        STYLES[prediction],
+        assessment === 'inconclusive' ? INCONCLUSIVE_STYLE : STYLES[prediction],
         className,
       )}
     >
-      {LABELS[prediction]}
+      {assessment === 'inconclusive' ? 'Inconclusive' : LABELS[prediction]}
     </span>
   )
 }

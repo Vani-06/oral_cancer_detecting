@@ -37,6 +37,13 @@ class Prediction(Base):
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     dysplasia_grade: Mapped[str | None] = mapped_column(String(16), nullable=True)
     heatmap_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Optional photo of the same patient's healthy opposite-side site.
+    reference_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # "used", or "not_normal" when the reference itself looked abnormal and
+    # the assessment fell back to the lesion photo alone; None = no reference.
+    reference_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # "cancer" / "no_cancer" / "inconclusive" (retake or refer).
+    assessment: Mapped[str | None] = mapped_column(String(16), nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),

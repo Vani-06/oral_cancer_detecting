@@ -125,7 +125,11 @@ export function DashboardPage() {
                       {item.prediction !== 'Pending' && (
                         <GradeBadge grade={item.dysplasia_grade} size="sm" />
                       )}
-                      <PredictionBadge prediction={item.prediction} size="sm" />
+                      <PredictionBadge
+                        prediction={item.prediction}
+                        assessment={item.assessment}
+                        size="sm"
+                      />
                       <Link to={`/predictions/${item.prediction_id}`}>
                         <Button variant="secondary" size="sm">
                           Open

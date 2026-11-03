@@ -66,8 +66,31 @@ def grade_text(grade: str | None) -> str:
     return f"{grade.capitalize()} dysplasia" if grade else "Not available"
 
 
-def cancer_text(label: str | None) -> str:
+def cancer_text(label: str | None, assessment: str | None = None) -> str:
+    if assessment:
+        return {
+            "cancer": "Cancer (biopsy advised to confirm)",
+            "no_cancer": "No cancer",
+            "inconclusive": "Inconclusive - retake the photo or refer",
+        }[assessment]
     return {"Cancer": "Cancer (biopsy advised to confirm)", "Non-Cancer": "No cancer"}.get(label or "", "Pending")
+
+
+HABIT_SIDE_NOTE = "Lesion is on the side where the patient holds pan / tobacco."
+
+
+def habit_side_concordant(metadata: dict | None) -> bool:
+    """Lesion on the side the habit is practised -- informational only; it
+    does not change the assessment."""
+    m = metadata or {}
+    side = m.get("lesion_side")
+    return side in ("left", "right") and m.get("habit_side") in (side, "both")
+
+
+REFERENCE_NOTES = {
+    "used": "Compared with the patient's own opposite-side photo.",
+    "not_normal": "Opposite-side photo did not look normal either. Examine both sides.",
+}
 
 
 def _format_metadata_value(key: str, value: object) -> str:
@@ -125,8 +148,18 @@ def generate_report_pdf(prediction: Prediction, output_path: Path) -> None:
         c.drawString(MARGIN + 0.2 * inch, y + 0.05 * inch, GRADE_RELIABILITY_NOTE)
         c.setFont("Helvetica-Bold", 12)
         y -= 0.2 * inch
-    c.drawString(MARGIN, y, f"2. Cancer: {cancer_text(prediction.prediction)}")
+    c.drawString(MARGIN, y, f"2. Cancer: {cancer_text(prediction.prediction, prediction.assessment)}")
     y -= 0.45 * inch
+    notes = []
+    if prediction.reference_status:
+        notes.append(REFERENCE_NOTES[prediction.reference_status])
+    if habit_side_concordant(prediction.metadata_json):
+        notes.append(HABIT_SIDE_NOTE)
+    for note in notes:
+        c.setFont("Helvetica-Oblique", 9)
+        c.drawString(MARGIN + 0.2 * inch, y + 0.25 * inch, note)
+        c.setFont("Helvetica-Bold", 12)
+        y -= 0.18 * inch
 
     image_top = y
     image_path = Path(settings.UPLOAD_DIR) / prediction.filename

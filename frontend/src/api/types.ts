@@ -12,6 +12,20 @@ export type PredictionLabel = 'Cancer' | 'Non-Cancer'
 /** Predicted grade of epithelial dysplasia; null when no grading model ran. */
 export type DysplasiaGrade = 'none' | 'mild' | 'moderate' | 'severe'
 
+/**
+ * Final call. 'inconclusive' means the answer was not stable under edits
+ * that should not change it (mirror, rotation, lighting, compression) --
+ * retake the photo or refer.
+ */
+export type Assessment = 'cancer' | 'no_cancer' | 'inconclusive'
+
+/**
+ * Same-patient opposite-side reference: 'used', or 'not_normal' when that
+ * photo itself looked abnormal and the lesion photo was assessed alone.
+ * null when no reference photo was given.
+ */
+export type ReferenceStatus = 'used' | 'not_normal'
+
 /** Mirrors `PredictionUploadResponse`. What POST /predict returns today. */
 export interface PredictionUploadResponse {
   prediction_id: number
@@ -20,8 +34,11 @@ export interface PredictionUploadResponse {
   message: string
   created_at: string
   image_url: string | null
+  reference_image_url?: string | null
   prediction: PredictionLabel | 'Pending'
   dysplasia_grade: DysplasiaGrade | null
+  assessment?: Assessment | null
+  reference_status?: ReferenceStatus | null
   heatmap_url: string | null
   pdf_url: string | null
   is_pending_inference: boolean
@@ -32,6 +49,8 @@ export interface PredictionResult {
   prediction_id: number
   prediction: PredictionLabel
   dysplasia_grade: DysplasiaGrade | null
+  assessment?: Assessment | null
+  reference_status?: ReferenceStatus | null
   heatmap_url: string | null
   pdf_url: string | null
 }
@@ -41,6 +60,8 @@ export interface PredictionHistoryItem {
   prediction_id: number
   prediction: PredictionLabel | 'Pending'
   dysplasia_grade: DysplasiaGrade | null
+  assessment?: Assessment | null
+  reference_status?: ReferenceStatus | null
   created_at: string
   image_url?: string | null
 }
@@ -61,6 +82,8 @@ export interface PredictionOutcome extends Omit<PredictionResult, 'prediction'> 
   filename?: string
   /** Object URL or data URI for the source image, for previews and thumbnails. */
   image_url?: string
+  /** The same patient's opposite-side photo, when one was taken. */
+  reference_image_url?: string | null
   /** Patient metadata stored with the prediction (GET /predictions/{id}). */
   metadata?: PatientMetadata | null
 }
@@ -89,6 +112,8 @@ export interface PatientMetadata {
   betel_quid_use: boolean
   betel_quid_years?: number
   alcohol_use: boolean
+  lesion_side?: 'left' | 'right' | 'midline'
+  habit_side?: 'left' | 'right' | 'both'
   lesion_site:
     | 'buccal_mucosa'
     | 'tongue'

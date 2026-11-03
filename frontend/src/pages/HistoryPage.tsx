@@ -116,7 +116,11 @@ export function HistoryPage() {
                       )}
                     </td>
                     <td className="py-3 pr-4">
-                      <PredictionBadge prediction={item.prediction} size="sm" />
+                      <PredictionBadge
+                        prediction={item.prediction}
+                        assessment={item.assessment}
+                        size="sm"
+                      />
                     </td>
                     <td className="py-3 pr-4 text-slate-700">
                       {formatDateTime(item.created_at)}

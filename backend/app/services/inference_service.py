@@ -23,13 +23,14 @@ model-specific) weights file keeps working. Without a grading checkpoint,
 predictions simply carry no grade.
 """
 
+import io
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-from PIL import Image, ImageOps
+from PIL import Image, ImageEnhance, ImageOps
 from torchvision import transforms
 from torchvision.models import resnet50
 
@@ -46,11 +47,40 @@ _GRADE_NAMES = {
 }
 
 
+def _jpeg(image: Image.Image, quality: int) -> Image.Image:
+    buf = io.BytesIO()
+    image.save(buf, "JPEG", quality=quality)
+    return Image.open(io.BytesIO(buf.getvalue())).convert("RGB")
+
+
+def _centre_crop(image: Image.Image, frac: float) -> Image.Image:
+    w, h = image.size
+    dw, dh = int(w * (1 - frac) / 2), int(h * (1 - frac) / 2)
+    return image.crop((dw, dh, w - dw, h - dh))
+
+
+# Edits that must not change a diagnosis. Must match STABILITY_EDITS in
+# ml/scripts/reference_experiments.py, where the vote thresholds were chosen.
+STABILITY_EDITS = [
+    lambda im: im,
+    ImageOps.mirror,
+    lambda im: im.rotate(90, expand=True),
+    lambda im: im.rotate(180),
+    lambda im: im.rotate(270, expand=True),
+    lambda im: ImageEnhance.Brightness(im).enhance(0.85),
+    lambda im: ImageEnhance.Brightness(im).enhance(1.15),
+    lambda im: _jpeg(im, 40),
+    lambda im: _centre_crop(im, 0.85),
+]
+
+
 @dataclass(frozen=True)
 class InferenceResult:
-    label: str  # "Cancer" or "Non-Cancer"
+    label: str  # "Cancer" or "Non-Cancer" (single answer on the photo as taken)
     confidence: float  # probability of `label`; stored, never shown
     dysplasia_grade: str | None  # "none" / "mild" / "moderate" / "severe", or None
+    assessment: str  # "cancer" / "no_cancer" / "inconclusive"
+    reference_status: str | None = None  # "used" / "not_normal" / None (no reference)
 
 
 def _load_checkpoint(path_setting: str | None):
@@ -154,13 +184,62 @@ class InferenceService:
                     logits[idx] = float("-inf")
         return self._idx_to_grade[int(logits.argmax().item())]
 
+    def _cancer_votes(self, image: Image.Image) -> int:
+        """How many STABILITY_EDITS of the photo the model calls Cancer."""
+        batch = torch.stack([self._transform(edit(image)) for edit in STABILITY_EDITS])
+        with torch.no_grad():
+            p = F.softmax(self._model(batch), dim=1)[:, self._label_to_idx["Cancer"]]
+        return int((p >= settings.CANCER_THRESHOLD).sum().item())
+
+    def _features(self, image: Image.Image) -> torch.Tensor:
+        """Unit-length penultimate features of the cancer model."""
+        captured: dict[str, torch.Tensor] = {}
+        hook = self._model.avgpool.register_forward_hook(lambda m, i, o: captured.update(f=o.flatten(1)[0]))
+        try:
+            with torch.no_grad():
+                self._model(self._transform(image).unsqueeze(0))
+        finally:
+            hook.remove()
+        return captured["f"] / captured["f"].norm()
+
+    def _assess(self, image: Image.Image, reference: Image.Image | None) -> tuple[str, str | None]:
+        votes = self._cancer_votes(image)
+        if votes >= settings.STABILITY_CANCER_MIN:
+            assessment = "cancer"
+        elif votes <= settings.STABILITY_NO_CANCER_MAX:
+            assessment = "no_cancer"
+        else:
+            # The answer flips under edits that should not matter: no call.
+            assessment = "inconclusive"
+        if reference is None:
+            return assessment, None
+        # Chewers often have lesions on both sides, so the opposite side is
+        # flagged when the model does not see it as normal either. That check
+        # uses the same model, which over-calls some normal sites (cheek
+        # close-ups), so a "not_normal" reference still informs the decision
+        # below rather than being discarded.
+        status = "used" if self._cancer_votes(reference) <= settings.STABILITY_NO_CANCER_MAX else "not_normal"
+        distance = float(1 - self._features(image) @ self._features(reference))
+        if assessment == "cancer" and distance <= settings.REFERENCE_SAME_AS_NORMAL_MAX:
+            # The lesion photo is no more different from this patient's own
+            # opposite side than healthy mouths are between sides, so the
+            # Cancer call is not specific to the lesion -- either the model
+            # over-calls this site, or both sides are diseased. Refer.
+            # The reference never turns a result into "no_cancer".
+            assessment = "inconclusive"
+        return assessment, status
+
     def looks_like_oral_photo(self, image_path: Path) -> bool:
         """True when no photo check is configured, or the check accepts it."""
         return self.gate is None or self.gate.accepts(_open_photo(image_path))
 
-    def predict(self, image_path: Path, heatmap_output_path: Path) -> InferenceResult:
+    def predict(
+        self, image_path: Path, heatmap_output_path: Path, reference_path: Path | None = None
+    ) -> InferenceResult:
         """Runs cancer detection + Grad-CAM and, if configured, dysplasia
         grading. Writes the heatmap overlay PNG to heatmap_output_path.
+        `reference_path` is an optional photo of the same site on the same
+        patient's healthy opposite side.
 
         Only call this when `self.enabled` is True.
         """
@@ -215,10 +294,14 @@ class InferenceService:
         overlay.convert("RGB").save(heatmap_output_path)
 
         assert self._idx_to_label is not None
+        reference = _open_photo(reference_path) if reference_path is not None else None
+        assessment, reference_status = self._assess(image, reference)
         return InferenceResult(
             label=self._idx_to_label[predicted_idx],
             confidence=confidence,
             dysplasia_grade=self._grade(image, cancer=predicted_idx == cancer_idx),
+            assessment=assessment,
+            reference_status=reference_status,
         )
 
     @staticmethod

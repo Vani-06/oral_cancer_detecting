@@ -60,6 +60,10 @@ def _image_url(record: Prediction) -> str | None:
     return f"/predictions/{record.prediction_id}/image" if record.filename else None
 
 
+def _reference_image_url(record: Prediction) -> str | None:
+    return f"/predictions/{record.prediction_id}/reference-image" if record.reference_filename else None
+
+
 def _heatmap_url(record: Prediction) -> str | None:
     return f"/predictions/{record.prediction_id}/heatmap" if record.heatmap_path else None
 
@@ -75,11 +79,14 @@ def _record_to_detail(record: Prediction) -> PredictionDetail:
         prediction_id=record.prediction_id,
         prediction=record.prediction or "Pending",
         dysplasia_grade=record.dysplasia_grade,
+        assessment=record.assessment,
+        reference_status=record.reference_status,
         heatmap_url=_heatmap_url(record),
         pdf_url=_report_url(record),
         filename=record.filename,
         created_at=record.created_at.isoformat(),
         image_url=_image_url(record),
+        reference_image_url=_reference_image_url(record),
         is_pending_inference=record.is_pending,
         metadata=record.metadata_json,
     )
@@ -90,6 +97,8 @@ def _record_to_history_item(record: Prediction) -> PredictionHistoryItem:
         prediction_id=record.prediction_id,
         prediction=record.prediction or "Pending",
         dysplasia_grade=record.dysplasia_grade,
+        assessment=record.assessment,
+        reference_status=record.reference_status,
         created_at=record.created_at.isoformat(),
         image_url=_image_url(record),
     )
@@ -99,13 +108,17 @@ def _record_to_history_item(record: Prediction) -> PredictionHistoryItem:
 async def upload_prediction(
     file: UploadFile = File(...),
     metadata_json: str | None = Form(None),
+    # Optional photo of the same site on the patient's healthy opposite side.
+    reference_file: UploadFile | None = File(None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> PredictionUploadResponse:
     service = PredictionService(db)
     try:
         metadata = _parse_metadata(metadata_json)
-        prediction = service.create_prediction(user=user, file=file, metadata=metadata)
+        prediction = service.create_prediction(
+            user=user, file=file, metadata=metadata, reference_file=reference_file
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -122,8 +135,11 @@ async def upload_prediction(
         message=message,
         created_at=prediction.created_at.isoformat(),
         image_url=_image_url(prediction),
+        reference_image_url=_reference_image_url(prediction),
         prediction=prediction.prediction or "Pending",
         dysplasia_grade=prediction.dysplasia_grade,
+        assessment=prediction.assessment,
+        reference_status=prediction.reference_status,
         heatmap_url=_heatmap_url(prediction),
         pdf_url=_report_url(prediction),
         is_pending_inference=prediction.is_pending,
@@ -164,6 +180,19 @@ def get_prediction_image(
     path = settings.UPLOAD_DIR / record.filename if record and record.filename else None
     if path is None or not path.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
+    return _private_file(path)
+
+
+@router.get("/predictions/{prediction_id}/reference-image")
+def get_prediction_reference_image(
+    prediction_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    record = PredictionService(db).get_prediction(prediction_id, user)
+    path = settings.UPLOAD_DIR / record.reference_filename if record and record.reference_filename else None
+    if path is None or not path.is_file():
+        raise HTTPException(status_code=404, detail="Reference image not found")
     return _private_file(path)
 
 

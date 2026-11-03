@@ -22,6 +22,18 @@ export const TOBACCO_TYPE_OPTIONS = [
   { value: 'both', label: 'Both' },
 ] as const
 
+export const LESION_SIDE_OPTIONS = [
+  { value: 'left', label: 'Left' },
+  { value: 'right', label: 'Right' },
+  { value: 'midline', label: 'Midline' },
+] as const
+
+export const HABIT_SIDE_OPTIONS = [
+  { value: 'left', label: 'Left' },
+  { value: 'right', label: 'Right' },
+  { value: 'both', label: 'Both sides' },
+] as const
+
 export const LESION_SITE_OPTIONS = [
   { value: 'buccal_mucosa', label: 'Buccal mucosa' },
   { value: 'tongue', label: 'Tongue' },
@@ -84,6 +96,9 @@ export const patientMetadataSchema = z
     alcohol_use: z.boolean({ error: YES_NO_REQUIRED }),
 
     lesion_site: z.enum(LESION_SITES, { error: 'Select the lesion site' }),
+    lesion_side: z.enum(['left', 'right', 'midline']).optional(),
+    // Where the patient usually holds pan / tobacco, if they chew.
+    habit_side: z.enum(['left', 'right', 'both']).optional(),
     // Optional: often not known, and the client's case sheet rarely has it.
     lesion_duration_weeks: z
       .number()
@@ -183,6 +198,8 @@ export const METADATA_FIELD_LABELS: Record<keyof PatientMetadataValues, string> 
     betel_quid_years: 'Years of betel quid use',
     alcohol_use: 'Alcohol use',
     lesion_site: 'Lesion site',
+    lesion_side: 'Lesion side',
+    habit_side: 'Side pan / tobacco is held',
     lesion_duration_weeks: 'Lesion duration',
     pain: 'Pain',
     bleeding: 'Bleeding',
@@ -220,6 +237,10 @@ export function formatMetadataValue(
       return labelFrom(TOBACCO_TYPE_OPTIONS, String(value))
     case 'lesion_site':
       return labelFrom(LESION_SITE_OPTIONS, String(value))
+    case 'lesion_side':
+      return labelFrom(LESION_SIDE_OPTIONS, String(value))
+    case 'habit_side':
+      return labelFrom(HABIT_SIDE_OPTIONS, String(value))
     default:
       return String(value)
   }

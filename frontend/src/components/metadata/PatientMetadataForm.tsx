@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Textarea } from '@/components/ui/Textarea'
 import {
+  HABIT_SIDE_OPTIONS,
+  LESION_SIDE_OPTIONS,
   LESION_SITE_OPTIONS,
   SEX_OPTIONS,
   TOBACCO_TYPE_OPTIONS,
@@ -31,6 +33,7 @@ interface PatientMetadataFormProps {
 /** Empty string -> undefined, so a blank number field reports "required"
  *  rather than "expected number, received NaN". */
 const numberField = { setValueAs: (v: string) => (v === '' ? undefined : Number(v)) }
+const optionalChoice = { setValueAs: (v: string) => (v === '' ? undefined : v) }
 
 /** Trimmed, and blank -> undefined, so an untouched optional text field is
  *  omitted from the payload rather than sent as "". */
@@ -193,6 +196,18 @@ export function PatientMetadataForm({
             options={LESION_SITE_OPTIONS}
             error={errors.lesion_site?.message}
             {...register('lesion_site')}
+          />
+          <Select
+            label="Side (optional)"
+            options={LESION_SIDE_OPTIONS}
+            error={errors.lesion_side?.message}
+            {...register('lesion_side', optionalChoice)}
+          />
+          <Select
+            label="Side pan / tobacco is held (optional)"
+            options={HABIT_SIDE_OPTIONS}
+            error={errors.habit_side?.message}
+            {...register('habit_side', optionalChoice)}
           />
           <Input
             label="Duration in weeks (optional)"
