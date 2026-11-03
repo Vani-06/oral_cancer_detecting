@@ -42,7 +42,7 @@ export function Sidebar() {
     <aside className="bg-surface border-surface-border hidden w-56 shrink-0 border-r md:block">
       <div className="border-surface-border flex h-14 items-center gap-2 border-b px-5">
         <span className="bg-brand-600 h-6 w-6 rounded" aria-hidden="true" />
-        <span className="text-sm font-semibold text-slate-900">OralScan</span>
+        <span className="text-sm font-semibold text-slate-900">OralSentinel</span>
       </div>
       <nav className="flex flex-col gap-1 p-3" aria-label="Main">
         {NAV_ITEMS.map(({ to, label, Icon, end }) => (

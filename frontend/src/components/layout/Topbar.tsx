@@ -7,7 +7,7 @@ export function Topbar() {
   return (
     <header className="bg-surface border-surface-border flex h-14 shrink-0 items-center justify-between gap-4 border-b px-4 sm:px-6">
       <span className="text-sm font-semibold text-slate-900 md:hidden">
-        OralScan
+        OralSentinel
       </span>
 
       <div className="ml-auto flex items-center gap-3">

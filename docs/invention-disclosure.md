@@ -92,8 +92,8 @@ requires paired same-patient photographs (section 5).
 - Test-time augmentation for uncertainty (general ML): relevant to claim 5
   on its own; the combination with site-matched references and the
   asymmetric safety rule is the proposed contribution.
-- Sascan Meditech "OralScan" device (Indian patent, CE) — also a naming
-  conflict with this product's current name.
+- Sascan Meditech "OralScan" device (Indian patent, CE) — the reason this product was
+  renamed from "OralScan" to OralSentinel.
 
 ## 5. Pilot needed to prove the comparison
 
