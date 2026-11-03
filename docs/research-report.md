@@ -1,6 +1,6 @@
 # Oral Cancer Detection Platform — Research Report
 
-Oct 13, 2026 · Live version with charts: https://claude.ai/code/artifact/3a6a015a-612f-44a2-895b-6320fdd987c9
+Oct 13, 2026
 
 ## Executive summary
 

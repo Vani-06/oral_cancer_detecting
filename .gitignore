@@ -25,4 +25,3 @@ backend/*.sqlite3
 ml/data/
 ml/artifacts/*
 !ml/artifacts/model_card.md
-.claude/
