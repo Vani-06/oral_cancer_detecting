@@ -1,7 +1,12 @@
 # Invention disclosure (draft) — CONFIDENTIAL
 
-**Same-patient opposite-side referenced assessment of oral lesions from
-clinical photographs, with a stability-based three-way result**
+**(1) Acquisition-consensus triage of oral lesion photographs, and
+(2) same-patient self-referenced assessment** -- both work from a single
+photograph; an opposite-side photo is an optional enhancement of (2).
+
+Full results, metrics with confidence intervals and the benchmark against
+published work: `docs/confidential/OralSentinel-Report-CONFIDENTIAL.pdf`
+(sections 4, 5 and 8). The summary below reflects that report.
 
 Status: internal draft for a patent attorney. Do not publish, present or
 push to any public repository before a filing. Draft date: 4 Nov 2026.
@@ -18,7 +23,36 @@ JPEG compression, zooming out) made the model miss up to 15% more cancers.
 A single yes/no answer also gives false reassurance when the model is
 unsure.
 
-## 2. The invention
+## 1a. Invention 1 (single photo, validated): acquisition-consensus triage
+
+The photo is re-analysed under 9 changes a phone or operator introduces but
+that do not change the diagnosis (identity, mirror, 90/180/270 rotation,
+exposure x0.85 and x1.15, JPEG quality 40, 85% centre crop), chosen from a
+measured audit of the acquisition factors the model is sensitive to. Votes
+for cancer out of 9: >= 6 -> cancer; 0 -> no cancer; otherwise
+"inconclusive: retake or refer". Thresholds fixed on validation to bound
+cancers called "no cancer".
+
+Evidence (corrected held-out test, 135 photos, 58 cancers): cancers called
+"no cancer" 15.5% -> 3.4% (95% CI 0-8.6%); referral sensitivity 96.6% with
+84.4% of non-cancers cleared, versus 94.8% / 79.2% for a plain threshold at a
+similar catch rate. Published external comparison (Fu et al. 2020): 89.6% /
+80.6% on different data.
+
+Prior art to address: test-time augmentation uncertainty (Ayhan and Berens
+2018; Wang et al. 2019), abstaining classifiers. Contribution: the
+acquisition-derived edit set, the miss-bounding vote rule, referral output in
+oral screening.
+
+## 2. Invention 2: same-patient self-reference
+
+Single-photo forms: (a) the most suspicious region (activation map) against
+the surrounding tissue in the same photo -- test AUC of the contrast alone
+0.09 (0.91 inverted; cancers show less contrast, likely because lesions fill
+the frame); combined with the model no overall AUC gain (0.930 vs 0.932) but
+at a high catch rate sensitivity 96.6% vs 94.8%, specificity 81.8% vs 79.2%,
+client dysplasia flagged 41% vs 54% (within noise); (b) left half vs
+mirrored right half (AUC 0.68 / 0.76). Optional form (c), detailed below:
 
 A smartphone-based system and method in which:
 
@@ -38,11 +72,7 @@ A smartphone-based system and method in which:
    sides, a cancer call is not lesion-specific and becomes "inconclusive —
    refer"; the reference can never convert a result to "no cancer"
    (asymmetric, safety-preserving use of the reference).
-5. **Stability-based three-way result.** The lesion photo is re-scored under
-   a fixed set of diagnosis-preserving transformations (mirror, 90/180/270
-   rotations, ±15% exposure, JPEG q40, 85% crop). The count of
-   transformations voting cancer yields cancer / inconclusive / no cancer,
-   with thresholds fixed on a validation set.
+5. **Three-way result** as in Invention 1.
 6. **Habit-side concordance.** The patient record captures lesion side and
    the side where betel quid / tobacco is habitually held; a lesion on the
    habit side is reported (informational in the current embodiment).
@@ -62,7 +92,7 @@ Implementation (this repository, private branch
 
 | Measure | Result |
 |---|---|
-| Three-way output, corrected Kaggle test (135 photos): cancers called "no cancer" | 3.4% (single answer: 15.5% missed) |
+| Three-way output, corrected Kaggle test (135 photos): cancers called "no cancer" | 3.4% (95% CI 0-8.6%; single answer: 15.5% missed) |
 | Three-way output: inconclusive rate (test / validation) | 8.1% / 12.0% |
 | Three-way output: accuracy on decided cases (test) | 90.3% (single answer 87.4%) |
 | Left vs mirrored right half asymmetry alone, AUC cancer vs non-cancer (validation / test) | 0.68 / 0.76 |
@@ -118,3 +148,13 @@ requires paired same-patient photographs (section 5).
 - In India, software per se is excluded (Patents Act s.3(k)); claims should
   be framed as a capture system and method with a technical effect
   (cancelling device, illumination and patient-specific appearance).
+
+## 7. Research contributions (publish only after filing)
+
+- 72 benign lesions filed as cancer in the public Kaggle oral cancer
+  dataset (cross-checked against the original Mendeley source).
+- Same classifier, four evaluation protocols: augmentation before split
+  90.9% / AUC 0.970 -> duplicates grouped, corrected labels 85.6% / AUC
+  0.931 (`ml/scripts/leakage_experiment.py`).
+- Acquisition-shortcut audit (`ml/scripts/probe_shortcuts.py`) -- already
+  public.

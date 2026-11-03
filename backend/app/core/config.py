@@ -85,8 +85,8 @@ class Settings:
     # "cancer"; anything between -> "inconclusive". Chosen on the validation
     # split (ml/scripts/reference_experiments.py): on the corrected test split
     # it cut cancers called "no cancer" from 15.5% to 3.4%, 8.1% inconclusive.
-    STABILITY_NO_CANCER_MAX: int = int(os.getenv("STABILITY_NO_CANCER_MAX", "1"))
-    STABILITY_CANCER_MIN: int = int(os.getenv("STABILITY_CANCER_MIN", "5"))
+    STABILITY_NO_CANCER_MAX: int = int(os.getenv("STABILITY_NO_CANCER_MAX", "0"))
+    STABILITY_CANCER_MIN: int = int(os.getenv("STABILITY_CANCER_MIN", "6"))
     # Same-patient reference: a lesion photo whose features are no further
     # from the patient's own opposite-side photo than this is not called
     # "cancer" outright (it becomes "inconclusive"). Provisional: 90th
