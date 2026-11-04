@@ -19,6 +19,9 @@ const registerSchema = z.object({
       'Enter a valid email address',
     ),
   password: z.string().min(8, 'Use at least 8 characters'),
+  confirms_professional_use: z.literal(true, {
+    error: 'Please confirm to create an account',
+  }),
 })
 
 type RegisterValues = z.infer<typeof registerSchema>
@@ -82,6 +85,24 @@ export function RegisterPage() {
             error={errors.password?.message}
             {...register('password')}
           />
+
+          <label className="flex items-start gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4"
+              {...register('confirms_professional_use')}
+            />
+            <span>
+              I am a health professional and have the patient's consent to
+              upload their photos. I understand OralSentinel is a research
+              prototype and not a diagnosis.
+            </span>
+          </label>
+          {errors.confirms_professional_use && (
+            <p className="text-risk-high text-sm">
+              {errors.confirms_professional_use.message}
+            </p>
+          )}
 
           {formError && (
             <p

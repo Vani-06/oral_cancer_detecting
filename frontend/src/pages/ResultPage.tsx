@@ -241,7 +241,9 @@ function ResultView({
                     />
                     {cancerResult === 'cancer' && (
                       <span className="text-xs text-slate-500">
-                        Biopsy advised to confirm.
+                        A screening estimate, not a diagnosis. Please see a
+                        dentist or oral medicine specialist for an
+                        examination; only a biopsy can confirm cancer.
                       </span>
                     )}
                     {cancerResult === 'inconclusive' && (

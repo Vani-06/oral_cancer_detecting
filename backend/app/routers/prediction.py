@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.rate_limit import SlidingWindowLimiter
 from app.db import get_db
 from app.dependencies.auth import get_current_user
 from app.models import Prediction, Report, User
@@ -104,6 +105,9 @@ def _record_to_history_item(record: Prediction) -> PredictionHistoryItem:
     )
 
 
+predict_limiter = SlidingWindowLimiter(settings.PREDICT_MAX_PER_HOUR, 3600)
+
+
 @router.post("/predict", response_model=PredictionUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_prediction(
     file: UploadFile = File(...),
@@ -113,6 +117,13 @@ async def upload_prediction(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> PredictionUploadResponse:
+    retry_after = predict_limiter.hit(str(user.id))
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many analyses in the last hour. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
     service = PredictionService(db)
     try:
         metadata = _parse_metadata(metadata_json)

@@ -69,11 +69,11 @@ def grade_text(grade: str | None) -> str:
 def cancer_text(label: str | None, assessment: str | None = None) -> str:
     if assessment:
         return {
-            "cancer": "Cancer (biopsy advised to confirm)",
+            "cancer": "Cancer - screening estimate; see a specialist, only a biopsy confirms",
             "no_cancer": "No cancer",
             "inconclusive": "Inconclusive - retake the photo or refer",
         }[assessment]
-    return {"Cancer": "Cancer (biopsy advised to confirm)", "Non-Cancer": "No cancer"}.get(label or "", "Pending")
+    return {"Cancer": "Cancer - screening estimate; see a specialist, only a biopsy confirms", "Non-Cancer": "No cancer"}.get(label or "", "Pending")
 
 
 HABIT_SIDE_NOTE = "Lesion is on the side where the patient holds pan / tobacco."

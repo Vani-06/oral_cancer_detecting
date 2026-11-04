@@ -153,4 +153,6 @@ export interface LoginRequest {
 
 export interface RegisterRequest extends LoginRequest {
   full_name: string
+  /** Must be true: a health professional with the patient's consent. */
+  confirms_professional_use: true
 }

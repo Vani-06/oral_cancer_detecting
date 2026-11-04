@@ -16,6 +16,9 @@ class RegisterRequest(BaseModel):
     email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=8, max_length=128)
     full_name: str = Field(min_length=2, max_length=255)
+    # Open sign-up: the user confirms they are a health professional with
+    # the patient's consent to upload photos. Must be true.
+    confirms_professional_use: Literal[True]
 
     @field_validator("email")
     @classmethod

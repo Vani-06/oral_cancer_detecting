@@ -16,6 +16,9 @@ os.environ["REPORT_DIR"] = str(_TMP / "reports")
 os.environ["MODEL_PATH"] = ""
 os.environ["GRADING_MODEL_PATH"] = ""
 os.environ["GATE_MODEL_PATH"] = ""
+# Tests register many accounts from one client; the abuse limits get own tests.
+os.environ["REGISTER_MAX_PER_HOUR"] = "100000"
+os.environ["PREDICT_MAX_PER_HOUR"] = "100000"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -65,7 +68,7 @@ def register(client: TestClient) -> dict[str, str]:
     email = f"user-{uuid.uuid4().hex[:10]}@clinic.org"
     resp = client.post(
         "/register",
-        json={"email": email, "password": "password123", "full_name": "Test Clinician"},
+        json={"email": email, "password": "password123", "full_name": "Test Clinician", "confirms_professional_use": True},
     )
     assert resp.status_code == 201, resp.text
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}

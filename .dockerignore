@@ -1,0 +1,18 @@
+# Allow-list: only what deploy/*.Dockerfile copies. Patient photos, data
+# sets, local databases, .env files and virtualenvs never enter an image.
+*
+!backend/requirements.txt
+!backend/app
+!backend/alembic.ini
+!backend/alembic
+!ml/artifacts/resnet50_oral_cancer_v7.pt
+!ml/artifacts/oral_photo_gate_v1.pt
+!ml/artifacts/resnet50_dysplasia_grade_v2.pt
+!frontend
+!deploy
+backend/app/uploads
+**/__pycache__
+**/*.pyc
+frontend/node_modules
+frontend/dist
+frontend/.env*

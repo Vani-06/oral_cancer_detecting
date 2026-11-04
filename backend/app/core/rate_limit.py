@@ -41,3 +41,30 @@ class LoginRateLimiter:
     def reset(self, ip: str, email: str) -> None:
         with self._lock:
             self._failures.pop((ip, email), None)
+
+
+class SlidingWindowLimiter:
+    """Allows at most `max_events` per key in any `window_seconds`.
+
+    In-memory and per process, like LoginRateLimiter: it bounds abuse of a
+    single instance (sign-up spam, upload floods), not a determined attacker
+    across replicas.
+    """
+
+    def __init__(self, max_events: int, window_seconds: int) -> None:
+        self.max_events = max_events
+        self.window_seconds = window_seconds
+        self._events: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = Lock()
+
+    def hit(self, key: str) -> int | None:
+        """Records an event; returns seconds to wait if over the limit (event not recorded)."""
+        with self._lock:
+            now = time.monotonic()
+            events = self._events[key]
+            while events and now - events[0] > self.window_seconds:
+                events.popleft()
+            if len(events) >= self.max_events:
+                return max(1, int(self.window_seconds - (now - events[0])) + 1)
+            events.append(now)
+            return None

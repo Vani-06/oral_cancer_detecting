@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.rate_limit import LoginRateLimiter
+from app.core.rate_limit import LoginRateLimiter, SlidingWindowLimiter
 from app.db import get_db
 from app.dependencies.auth import get_current_user
 from app.models import User
@@ -12,14 +12,22 @@ from app.services.auth_service import AuthService
 router = APIRouter(tags=["auth"])
 
 login_limiter = LoginRateLimiter(settings.LOGIN_MAX_FAILURES, settings.LOGIN_WINDOW_SECONDS)
+register_limiter = SlidingWindowLimiter(settings.REGISTER_MAX_PER_HOUR, 3600)
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest, db: Session = Depends(get_db)):
+def register(payload: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     if not settings.ALLOW_REGISTRATION:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Self-registration is disabled. Ask an administrator for an account.",
+        )
+    retry_after = register_limiter.hit(request.client.host if request.client else "unknown")
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many accounts created from this network. Try again later.",
+            headers={"Retry-After": str(retry_after)},
         )
     service = AuthService(db)
     try:

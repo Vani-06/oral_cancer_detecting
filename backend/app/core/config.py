@@ -85,6 +85,10 @@ class Settings:
     # "cancer"; anything between -> "inconclusive". Chosen on the validation
     # split (ml/scripts/reference_experiments.py): on the corrected test split
     # it cut cancers called "no cancer" from 15.5% to 3.4%, 8.1% inconclusive.
+    # Abuse limits for public sign-up: registrations per client address and
+    # analyses per account, each per rolling hour.
+    REGISTER_MAX_PER_HOUR: int = int(os.getenv("REGISTER_MAX_PER_HOUR", "5"))
+    PREDICT_MAX_PER_HOUR: int = int(os.getenv("PREDICT_MAX_PER_HOUR", "30"))
     STABILITY_NO_CANCER_MAX: int = int(os.getenv("STABILITY_NO_CANCER_MAX", "0"))
     STABILITY_CANCER_MIN: int = int(os.getenv("STABILITY_CANCER_MIN", "6"))
     # Same-patient reference: a lesion photo whose features are no further
@@ -129,6 +133,13 @@ class Settings:
             raise RuntimeError("CANCER_THRESHOLD must be strictly between 0 and 1")
         if not 0 <= self.STABILITY_NO_CANCER_MAX < self.STABILITY_CANCER_MIN <= 9:
             raise RuntimeError("Need 0 <= STABILITY_NO_CANCER_MAX < STABILITY_CANCER_MIN <= 9")
+        if self.is_production:
+            # A deployed instance without its models would leave every
+            # analysis "Pending" or skip the photo check; refuse to start.
+            for name in ("MODEL_PATH", "GATE_MODEL_PATH", "GRADING_MODEL_PATH"):
+                value = getattr(self, name)
+                if not value or not Path(value).is_file():
+                    raise RuntimeError(f"{name} must point to an existing model file in production")
 
 
 settings = Settings()

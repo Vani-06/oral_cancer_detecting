@@ -17,7 +17,7 @@ def test_health(client):
 def test_register_login_me(client):
     email = "flow@clinic.org"
     reg = client.post(
-        "/register", json={"email": email, "password": "password123", "full_name": "Flow"}
+        "/register", json={"email": email, "password": "password123", "full_name": "Flow", "confirms_professional_use": True}
     )
     assert reg.status_code == 201
     login = client.post("/login", json={"email": email, "password": "password123"})
@@ -28,7 +28,7 @@ def test_register_login_me(client):
 
 
 def test_wrong_password_rejected(client):
-    client.post("/register", json={"email": "pw@clinic.org", "password": "password123", "full_name": "P"})
+    client.post("/register", json={"email": "pw@clinic.org", "password": "password123", "full_name": "P", "confirms_professional_use": True})
     assert client.post("/login", json={"email": "pw@clinic.org", "password": "nope-nope"}).status_code == 401
 
 
