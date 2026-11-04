@@ -248,8 +248,8 @@ function ResultView({
                     )}
                     {cancerResult === 'inconclusive' && (
                       <span className="text-xs text-slate-500">
-                        The answer changed when the photo was slightly altered
-                        (angle, light, compression), so no call is made. Retake
+                        Not confident enough, across small changes to the photo
+                        (angle, light, compression), to rule cancer out. Retake
                         a clear close-up, or refer for examination.
                       </span>
                     )}

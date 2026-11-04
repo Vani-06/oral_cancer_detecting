@@ -254,12 +254,16 @@ def post_pair(client, auth, lesion, reference):
     return client.post("/predict", headers=auth, files=files)
 
 
-def test_three_way_assessment_follows_the_vote_thresholds(client, auth, enabled_inference, monkeypatch):
-    # Every edit votes Cancer at a near-zero threshold, none at a near-one.
-    monkeypatch.setattr(settings, "CANCER_THRESHOLD", 1e-9)
-    assert client.get(f"/predictions/{post(client, auth)['prediction_id']}", headers=auth).json()["assessment"] == "cancer"
-    monkeypatch.setattr(settings, "CANCER_THRESHOLD", 1 - 1e-9)
-    assert client.get(f"/predictions/{post(client, auth)['prediction_id']}", headers=auth).json()["assessment"] == "no_cancer"
+def test_three_way_assessment_follows_the_triage_thresholds(client, auth, enabled_inference, monkeypatch):
+    result = lambda: client.get(f"/predictions/{post(client, auth)['prediction_id']}", headers=auth).json()["assessment"]  # noqa: E731
+    monkeypatch.setattr(settings, "TRIAGE_NO_CANCER_BELOW", 1e-9)
+    monkeypatch.setattr(settings, "TRIAGE_CANCER_AT", 2e-9)
+    assert result() == "cancer"
+    monkeypatch.setattr(settings, "TRIAGE_NO_CANCER_BELOW", 1 - 2e-9)
+    monkeypatch.setattr(settings, "TRIAGE_CANCER_AT", 1 - 1e-9)
+    assert result() == "no_cancer"
+    monkeypatch.setattr(settings, "TRIAGE_NO_CANCER_BELOW", 1e-9)
+    assert result() == "inconclusive"
 
 
 def test_reference_photo_is_stored_and_private(client, auth, enabled_inference):
@@ -274,21 +278,21 @@ def test_reference_photo_is_stored_and_private(client, auth, enabled_inference):
 
 def test_reference_never_turns_a_result_into_no_cancer(enabled_inference, monkeypatch):
     image = Image.new("RGB", (64, 64), (190, 95, 95))
-    # Lesion photo: inconclusive (3 of 9 edits vote Cancer); normal reference.
-    votes = iter([3, 0])
-    monkeypatch.setattr(enabled_inference, "_cancer_votes", lambda im: next(votes))
+    # Lesion photo: inconclusive (mean P(cancer) 0.3); normal reference (0.0).
+    votes = iter([0.3, 0.0])
+    monkeypatch.setattr(enabled_inference, "_consensus_score", lambda im: next(votes))
     monkeypatch.setattr(enabled_inference, "_features", lambda im: torch.ones(4) / 2)  # identical photos
     assert enabled_inference._assess(image, image) == ("inconclusive", "used")
     # Cancer call, but no different from the patient's own normal side -> refer.
-    votes = iter([9, 0])
+    votes = iter([0.95, 0.0])
     assert enabled_inference._assess(image, image) == ("inconclusive", "used")
     # Both sides look alike and both look abnormal: not lesion-specific -> refer.
-    votes = iter([9, 6])
+    votes = iter([0.95, 0.6])
     assert enabled_inference._assess(image, image) == ("inconclusive", "not_normal")
     # Lesion clearly more different than the patient's other side: call stands.
     features = iter([torch.tensor([1.0, 0.0]), torch.tensor([0.0, 1.0])])
     monkeypatch.setattr(enabled_inference, "_features", lambda im: next(features))
-    votes = iter([9, 6])
+    votes = iter([0.95, 0.6])
     assert enabled_inference._assess(image, image) == ("cancer", "not_normal")
 
 

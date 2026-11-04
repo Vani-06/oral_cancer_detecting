@@ -79,18 +79,22 @@ class Settings:
     # cancers. Choose with the clinical team using the validation table in
     # ml/artifacts/model_card.md -- never by tuning against held-out data.
     CANCER_THRESHOLD: float = float(os.getenv("CANCER_THRESHOLD", "0.5"))
-    # Three-way result: each photo is re-scored under 9 edits that should not
-    # change the diagnosis (see STABILITY_EDITS). At most STABILITY_NO_CANCER_MAX
-    # of them voting Cancer -> "no_cancer"; at least STABILITY_CANCER_MIN ->
-    # "cancer"; anything between -> "inconclusive". Chosen on the validation
-    # split (ml/scripts/reference_experiments.py): on the corrected test split
-    # it cut cancers called "no cancer" from 15.5% to 3.4%, 8.1% inconclusive.
+    # Three-way result (risk-controlled triage): the photo is re-scored under
+    # 9 edits that should not change the diagnosis (STABILITY_EDITS) and the
+    # mean P(cancer) decides: below TRIAGE_NO_CANCER_BELOW -> "no_cancer"; at
+    # or above TRIAGE_CANCER_AT -> "cancer"; otherwise "inconclusive". The
+    # lower threshold is set by conformal risk control on the validation split
+    # so that at most 5% of cancers are expected to be called "no cancer";
+    # the upper keeps non-cancers called "cancer" at or below 10%
+    # (ml/scripts/conformal_triage.py). Corrected test split: 1.7% of cancers
+    # called "no cancer", 81.8% of non-cancers cleared, 8.9% inconclusive.
+    # Recalibrate whenever the model (MODEL_PATH) changes.
     # Abuse limits for public sign-up: registrations per client address and
     # analyses per account, each per rolling hour.
     REGISTER_MAX_PER_HOUR: int = int(os.getenv("REGISTER_MAX_PER_HOUR", "5"))
     PREDICT_MAX_PER_HOUR: int = int(os.getenv("PREDICT_MAX_PER_HOUR", "30"))
-    STABILITY_NO_CANCER_MAX: int = int(os.getenv("STABILITY_NO_CANCER_MAX", "0"))
-    STABILITY_CANCER_MIN: int = int(os.getenv("STABILITY_CANCER_MIN", "6"))
+    TRIAGE_NO_CANCER_BELOW: float = float(os.getenv("TRIAGE_NO_CANCER_BELOW", "0.1447"))
+    TRIAGE_CANCER_AT: float = float(os.getenv("TRIAGE_CANCER_AT", "0.4934"))
     # Same-patient reference: a lesion photo whose features are no further
     # from the patient's own opposite-side photo than this is not called
     # "cancer" outright (it becomes "inconclusive"). Provisional: 90th
@@ -131,8 +135,8 @@ class Settings:
             raise RuntimeError("MAX_FILE_SIZE_MB must be positive")
         if not 0.0 < self.CANCER_THRESHOLD < 1.0:
             raise RuntimeError("CANCER_THRESHOLD must be strictly between 0 and 1")
-        if not 0 <= self.STABILITY_NO_CANCER_MAX < self.STABILITY_CANCER_MIN <= 9:
-            raise RuntimeError("Need 0 <= STABILITY_NO_CANCER_MAX < STABILITY_CANCER_MIN <= 9")
+        if not 0.0 < self.TRIAGE_NO_CANCER_BELOW < self.TRIAGE_CANCER_AT <= 1.0:
+            raise RuntimeError("Need 0 < TRIAGE_NO_CANCER_BELOW < TRIAGE_CANCER_AT <= 1")
         if self.is_production:
             # A deployed instance without its models would leave every
             # analysis "Pending" or skip the photo check; refuse to start.

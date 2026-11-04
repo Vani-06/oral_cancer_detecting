@@ -184,12 +184,12 @@ class InferenceService:
                     logits[idx] = float("-inf")
         return self._idx_to_grade[int(logits.argmax().item())]
 
-    def _cancer_votes(self, image: Image.Image) -> int:
-        """How many STABILITY_EDITS of the photo the model calls Cancer."""
+    def _consensus_score(self, image: Image.Image) -> float:
+        """Mean P(cancer) over the STABILITY_EDITS of the photo."""
         batch = torch.stack([self._transform(edit(image)) for edit in STABILITY_EDITS])
         with torch.no_grad():
             p = F.softmax(self._model(batch), dim=1)[:, self._label_to_idx["Cancer"]]
-        return int((p >= settings.CANCER_THRESHOLD).sum().item())
+        return float(p.mean().item())
 
     def _features(self, image: Image.Image) -> torch.Tensor:
         """Unit-length penultimate features of the cancer model."""
@@ -203,13 +203,13 @@ class InferenceService:
         return captured["f"] / captured["f"].norm()
 
     def _assess(self, image: Image.Image, reference: Image.Image | None) -> tuple[str, str | None]:
-        votes = self._cancer_votes(image)
-        if votes >= settings.STABILITY_CANCER_MIN:
+        score = self._consensus_score(image)
+        if score >= settings.TRIAGE_CANCER_AT:
             assessment = "cancer"
-        elif votes <= settings.STABILITY_NO_CANCER_MAX:
+        elif score < settings.TRIAGE_NO_CANCER_BELOW:
             assessment = "no_cancer"
         else:
-            # The answer flips under edits that should not matter: no call.
+            # Not clearly safe across edits that should not matter: refer.
             assessment = "inconclusive"
         if reference is None:
             return assessment, None
@@ -218,7 +218,7 @@ class InferenceService:
         # uses the same model, which over-calls some normal sites (cheek
         # close-ups), so a "not_normal" reference still informs the decision
         # below rather than being discarded.
-        status = "used" if self._cancer_votes(reference) <= settings.STABILITY_NO_CANCER_MAX else "not_normal"
+        status = "used" if self._consensus_score(reference) < settings.TRIAGE_NO_CANCER_BELOW else "not_normal"
         distance = float(1 - self._features(image) @ self._features(reference))
         if assessment == "cancer" and distance <= settings.REFERENCE_SAME_AS_NORMAL_MAX:
             # The lesion photo is no more different from this patient's own
