@@ -1,6 +1,7 @@
 # API image with the three models built in. Build from the repository root:
 #   docker build -f deploy/api.Dockerfile -t oralsentinel-api .
-FROM python:3.12-slim
+# Same Python as the tested local environment.
+FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
