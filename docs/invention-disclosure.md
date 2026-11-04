@@ -23,26 +23,40 @@ JPEG compression, zooming out) made the model miss up to 15% more cancers.
 A single yes/no answer also gives false reassurance when the model is
 unsure.
 
-## 1a. Invention 1 (single photo, validated): acquisition-consensus triage
+## 1a. Invention 1 (single photo, validated): risk-controlled acquisition-consensus triage
 
-The photo is re-analysed under 9 changes a phone or operator introduces but
-that do not change the diagnosis (identity, mirror, 90/180/270 rotation,
-exposure x0.85 and x1.15, JPEG quality 40, 85% centre crop), chosen from a
-measured audit of the acquisition factors the model is sensitive to. Votes
-for cancer out of 9: >= 6 -> cancer; 0 -> no cancer; otherwise
-"inconclusive: retake or refer". Thresholds fixed on validation to bound
-cancers called "no cancer".
+1. Acquisition audit: measure which capture factors (zoom, glare, JPEG,
+   framing, rotation, exposure) change the classifier's answer
+   (`ml/scripts/probe_shortcuts.py`).
+2. Consensus score: mean P(cancer) over 9 diagnosis-preserving edits
+   (identity, mirror, 90/180/270 rotation, exposure x0.85 / x1.15, JPEG
+   q40, 85% centre crop).
+3. Risk control: the "no cancer" threshold is set on a calibration set by
+   conformal risk control (Angelopoulos et al. 2022) so that the expected
+   share of cancers called "no cancer" is <= alpha (5%); a second threshold
+   bounds false cancer calls (~10%); between them: "inconclusive - retake
+   or refer". Thresholds in use: no cancer < 0.1447, cancer >= 0.4934
+   (`ml/scripts/conformal_triage.py`; backend `TRIAGE_*`).
 
-Evidence (corrected held-out test, 135 photos, 58 cancers): cancers called
-"no cancer" 15.5% -> 3.4% (95% CI 0-8.6%); referral sensitivity 96.6% with
-84.4% of non-cancers cleared, versus 94.8% / 79.2% for a plain threshold at a
-similar catch rate. Published external comparison (Fu et al. 2020): 89.6% /
-80.6% on different data.
+Evidence (corrected held-out test, 58 cancers / 77 non-cancers): cancers
+called "no cancer" 1/58 = 1.7% (95% CI 0.0-9.2%, bound 5%); referral
+sensitivity 98.3% (90.8-100%); non-cancers cleared 81.8% (71.4-89.7%);
+inconclusive 8.9%. Plain threshold: 84.5% / 87.0%. Best comparable published
+external result (Fu et al. 2020): 89.6% / 80.6% (different data).
 
 Prior art to address: test-time augmentation uncertainty (Ayhan and Berens
-2018; Wang et al. 2019), abstaining classifiers. Contribution: the
-acquisition-derived edit set, the miss-bounding vote rule, referral output in
-oral screening.
+2018; Wang et al. 2019); conformal prediction / risk control and its
+medical-imaging uses. Claimed: the combination of an acquisition-audit edit
+set, a consensus score and a risk-controlled referral output with a stated
+missed-cancer bound, for oral screening.
+
+Disclosure: the owner decided (4 Nov 2026) to deploy the full version
+publicly; after go-live this is public use. File before go-live if
+protection is wanted.
+
+Negative results (not claimed): a pathology-ordered ordinal model
+(validation AUC 0.901 vs 0.943; client dysplasia flagged 54% vs 13%;
+grade kappa 0.07) -- `ml/scripts/train_risk_continuum.py`.
 
 ## 2. Invention 2: same-patient self-reference
 
