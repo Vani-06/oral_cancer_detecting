@@ -160,6 +160,7 @@ class PredictionService:
             prediction.dysplasia_grade = result.dysplasia_grade
             prediction.assessment = result.assessment
             prediction.reference_status = result.reference_status
+            prediction.model_version = settings.analysis_version
             prediction.heatmap_path = heatmap_filename
             self.db.commit()
             self.db.refresh(prediction)

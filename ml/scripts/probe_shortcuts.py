@@ -95,10 +95,10 @@ PROBES = {
 def main():
     data = ML_DIR / "data"
     sets = {
-        "Kaggle healthy": [st.open_rgb(p) for p in sorted((data / "kaggle_split/test/Non-Cancer").glob("*"))],
+        "Kaggle healthy": [st.open_rgb(p) for p in sorted((data / "kaggle_split_fixed/test/Non-Cancer").glob("*"))],
         "client dysplasia": [st.open_rgb(data / "case_split/holdout" / r["filename"])
                              for r in csv.DictReader(open(data / "case_split/holdout/manifest.csv"))],
-        "CANCER caught": [st.open_rgb(p) for p in sorted((data / "kaggle_split/test/Cancer").glob("*"))],
+        "CANCER caught": [st.open_rgb(p) for p in sorted((data / "kaggle_split_fixed/test/Cancer").glob("*"))],
     }
     for ckpt in sys.argv[1:]:
         model = st.load_model(Path(ckpt))

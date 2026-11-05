@@ -157,7 +157,7 @@ def test_report_shows_grade_and_detection_but_no_score(tmp_root):
         record = SimpleNamespace(
             prediction_id=7, created_at=datetime(2026, 1, 1), prediction="Non-Cancer", confidence=0.93,
             dysplasia_grade="severe", filename="missing.jpg", heatmap_path=None, metadata_json=None,
-            assessment="no_cancer", reference_status="used",
+            assessment="no_cancer", reference_status="used", model_version="cancer=test; grade=test",
         )
         report_service.generate_report_pdf(record, tmp_root / "graded.pdf")
     finally:
@@ -312,3 +312,9 @@ def test_habit_side_concordance():
     assert not habit_side_concordant({"lesion_side": "left", "habit_side": "right"})
     assert not habit_side_concordant({"lesion_side": "midline", "habit_side": "both"})
     assert not habit_side_concordant(None)
+
+
+def test_every_analysis_records_its_model_version(client, auth, enabled_inference):
+    body = client.get(f"/predictions/{post(client, auth)['prediction_id']}", headers=auth).json()
+    assert body["model_version"] == settings.analysis_version
+    assert "cancer=" in body["model_version"] and "triage=" in body["model_version"]

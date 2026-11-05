@@ -86,6 +86,8 @@ export interface PredictionOutcome extends Omit<PredictionResult, 'prediction'> 
   reference_image_url?: string | null
   /** Patient metadata stored with the prediction (GET /predictions/{id}). */
   metadata?: PatientMetadata | null
+  /** Models and thresholds that produced this result. */
+  model_version?: string | null
 }
 
 /** A history row plus the extras the table renders. */

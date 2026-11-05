@@ -165,6 +165,7 @@ def test_report_keeps_long_notes_on_extra_pages(tmp_root):
         heatmap_path=None,
         assessment=None,
         reference_status=None,
+        model_version=None,
         metadata_json={**CASE_SHEET_METADATA, "clinical_notes": "word " * 399},
     )
     out = tmp_root / "long-notes.pdf"

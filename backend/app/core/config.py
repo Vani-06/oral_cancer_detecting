@@ -120,6 +120,14 @@ class Settings:
         return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
     @property
+    def analysis_version(self) -> str:
+        """Which model files and triage thresholds produce results, stored
+        with every analysis and printed on its report (traceability)."""
+        stem = lambda v: Path(v).stem if v else "none"  # noqa: E731
+        return (f"cancer={stem(self.MODEL_PATH)}; grade={stem(self.GRADING_MODEL_PATH)}; "
+                f"gate={stem(self.GATE_MODEL_PATH)}; triage={self.TRIAGE_NO_CANCER_BELOW}/{self.TRIAGE_CANCER_AT}")
+
+    @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"
 

@@ -148,7 +148,8 @@ export function HeatmapViewer({
 
       <p className="text-xs text-slate-500">
         Warmer regions indicate areas that most influenced the model's output.
-        They mark where the model looked, not a clinical margin.
+        Indicative only: they mark where the model looked, have not been
+        checked against clinician annotations, and are not a clinical margin.
       </p>
     </div>
   )

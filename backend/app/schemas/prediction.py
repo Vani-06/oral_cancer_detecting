@@ -190,3 +190,4 @@ class PredictionDetail(BaseModel):
     reference_image_url: str | None = None
     is_pending_inference: bool
     metadata: dict | None = None
+    model_version: str | None = None

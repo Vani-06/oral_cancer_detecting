@@ -77,6 +77,8 @@ def evaluate(X, y, groups, seeds=5, augmented=None):
             idx = np.random.default_rng(seed).permutation(len(ya))
             cut = int(0.8 * len(ya))
             tr, te = idx[:cut], idx[cut:]
+            if ya.dtype != bool:
+                raise ValueError("labels must be boolean")
             clf = LogisticRegression(C=1.0, max_iter=3000).fit(Xa[tr], ya[tr])
             p = clf.predict_proba(Xa[te])[:, 1]
             accs.append(accuracy_score(ya[te], p >= 0.5))
@@ -87,7 +89,7 @@ def evaluate(X, y, groups, seeds=5, augmented=None):
         p = clf.predict_proba(X[te])[:, 1]
         accs.append(accuracy_score(y[te], p >= 0.5))
         aucs.append(roc_auc_score(y[te], p))
-    r = lambda v: {"mean": float(np.mean(v)), "min": float(np.min(v)), "max": float(np.max(v))}  # noqa: E731
+    r = lambda v: {"mean": float(np.mean(v)), "sd": float(np.std(v, ddof=1)), "min": float(np.min(v)), "max": float(np.max(v))}  # noqa: E731
     return {"accuracy": r(accs), "roc_auc": r(aucs)}
 
 
@@ -122,13 +124,16 @@ def main():
         "B_random_split_duplicates_kept_original_labels": evaluate(X, y, singletons),
         "C_duplicates_grouped_original_labels": evaluate(X, y, dup_groups),
         "D_duplicates_grouped_corrected_labels": evaluate(X, y_fixed, dup_groups),
+        # One factor at a time, on the same 5 split seeds (review item 34):
+        "E_augment_then_random_split_corrected_labels": evaluate(X, y_fixed, singletons, augmented=(Xa, np.repeat(y_fixed, 4))),
+        "F_random_split_duplicates_kept_corrected_labels": evaluate(X, y_fixed, singletons),
         "photos": int(len(y)), "distinct_after_dedup": int(len(set(dup_groups))),
         "benign_labelled_cancer": int(relabel.sum()),
     }
     for k, v in out.items():
         if isinstance(v, dict):
-            print(f"{k:50s} accuracy {v['accuracy']['mean']:.3f} ({v['accuracy']['min']:.3f}-{v['accuracy']['max']:.3f})  "
-                  f"AUC {v['roc_auc']['mean']:.3f}")
+            print(f"{k:50s} accuracy {v['accuracy']['mean']:.3f} (SD {v['accuracy']['sd']:.3f})  "
+                  f"AUC {v['roc_auc']['mean']:.3f} (SD {v['roc_auc']['sd']:.3f})")
     (ML_DIR / "artifacts" / "leakage_experiment.json").write_text(json.dumps(out, indent=2))
 
 

@@ -284,6 +284,11 @@ function ResultView({
                 Both are screening estimates from the photo. Grade and
                 diagnosis are confirmed only by biopsy.
               </p>
+              {outcome.model_version && (
+                <p className="mt-2 text-[11px] break-words text-slate-400">
+                  Analysis version: {outcome.model_version}
+                </p>
+              )}
             </Card>
 
             <Card title="Report">

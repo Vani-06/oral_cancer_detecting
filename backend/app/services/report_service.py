@@ -138,6 +138,11 @@ def generate_report_pdf(prediction: Prediction, output_path: Path) -> None:
     c.drawString(MARGIN, y, f"Case ID: {prediction.prediction_id}")
     y -= 0.2 * inch
     c.drawString(MARGIN, y, f"Date: {prediction.created_at.isoformat()}")
+    if prediction.model_version:
+        y -= 0.2 * inch
+        c.setFont("Helvetica", 8)
+        c.drawString(MARGIN, y, f"Analysis version: {prediction.model_version}")
+        c.setFont("Helvetica", 10)
     y -= 0.4 * inch
 
     c.setFont("Helvetica-Bold", 12)

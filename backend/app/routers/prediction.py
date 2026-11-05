@@ -89,6 +89,7 @@ def _record_to_detail(record: Prediction) -> PredictionDetail:
         image_url=_image_url(record),
         reference_image_url=_reference_image_url(record),
         is_pending_inference=record.is_pending,
+        model_version=record.model_version,
         metadata=record.metadata_json,
     )
 
