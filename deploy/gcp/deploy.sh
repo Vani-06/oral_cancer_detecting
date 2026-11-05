@@ -80,7 +80,7 @@ gcloud builds submit --region "$REGION" --config deploy/gcp/cloudbuild.yaml \
 echo "== Deploying the API"
 gcloud run deploy oralsentinel-api --image "${REGISTRY}/api:${TAG}" --region "$REGION" \
   --service-account "$SA" --allow-unauthenticated --execution-environment gen2 \
-  --cpu 2 --memory 4Gi --min-instances 1 --max-instances 2 --concurrency 4 --timeout 300 \
+  --cpu 2 --memory 2Gi --min-instances 1 --max-instances 2 --concurrency 4 --timeout 300 \
   --add-cloudsql-instances "${PROJECT_ID}:${REGION}:${SQL_INSTANCE}" \
   --add-volume "name=data,type=cloud-storage,bucket=${BUCKET}" \
   --add-volume-mount "volume=data,mount-path=/data" \

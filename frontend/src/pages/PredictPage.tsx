@@ -117,7 +117,7 @@ export function PredictPage() {
                   </p>
                 )}
                 <p className="text-xs text-slate-500">
-                  Patient metadata is validated and stored with this analysis.
+                  Patient details are recorded for the report and the clinical record. They do not change the analysis result.
                 </p>
               </div>
             }
