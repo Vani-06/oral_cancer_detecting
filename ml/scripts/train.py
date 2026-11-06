@@ -145,9 +145,10 @@ class ZoomHealthy(datasets.ImageFolder):
     "looks zoomed" does not itself become a healthy cue.
     """
 
-    def __init__(self, root, p: float, shortcut_edits: bool = False):
+    def __init__(self, root, p: float, shortcut_edits: bool = False, zoom_cancer: bool = False):
         super().__init__(root)
         self.p = p
+        self.zoom_cancer = zoom_cancer
         self.shortcut_edits = shortcut_edits
         self.healthy_idx = self.class_to_idx["Non-Cancer"]
         tail = [
@@ -159,14 +160,21 @@ class ZoomHealthy(datasets.ImageFolder):
         ]
         self.mild = transforms.Compose([transforms.RandomResizedCrop(IMG_SIZE, scale=(0.7, 1.0)), *tail])
         self.zoom = transforms.Compose([transforms.RandomResizedCrop(IMG_SIZE, scale=(0.15, 0.6)), *tail])
+        self.zoom_lesion = transforms.Compose([transforms.RandomResizedCrop(IMG_SIZE, scale=(0.35, 0.8)), *tail])
 
     def __getitem__(self, index):
         path, target = self.samples[index]
         image = self.loader(path)
         if self.shortcut_edits:
             image = _shortcut_edits(image)
-        zoom = target == self.healthy_idx and random.random() < self.p
-        return (self.zoom if zoom else self.mild)(image), target
+        if target == self.healthy_idx:
+            zoom, tf = random.random() < self.p, self.zoom
+        else:
+            # --zoom-all (review item 21): close-ups of cancers too, so that
+            # "zoomed in" stops predicting "healthy". Milder crops keep the
+            # lesion in frame most of the time.
+            zoom, tf = self.zoom_cancer and random.random() < self.p, self.zoom_lesion
+        return (tf if zoom else self.mild)(image), target
 
 
 def run_epoch(model, loader, criterion, optimizer, device, train: bool):
@@ -225,6 +233,10 @@ def main():
         ),
     )
     parser.add_argument(
+        "--zoom-all", action="store_true",
+        help="Also apply close-up crops (35-80%% of the image) to cancer photos.",
+    )
+    parser.add_argument(
         "--zoom-healthy", type=float, default=0.0,
         help="Probability of replacing a healthy training image with a close-up crop (see ZoomHealthy).",
     )
@@ -242,7 +254,8 @@ def main():
     train_tf, eval_tf = build_transforms()
 
     if args.zoom_healthy > 0:
-        train_ds = ZoomHealthy(args.train_dir, p=args.zoom_healthy, shortcut_edits=args.shortcut_edits)
+        train_ds = ZoomHealthy(args.train_dir, p=args.zoom_healthy, shortcut_edits=args.shortcut_edits,
+                               zoom_cancer=args.zoom_all)
     else:
         train_ds = datasets.ImageFolder(args.train_dir, transform=train_tf)
     val_ds = datasets.ImageFolder(args.val_dir, transform=eval_tf)
