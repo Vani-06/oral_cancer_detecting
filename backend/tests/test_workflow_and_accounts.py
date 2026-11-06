@@ -197,3 +197,15 @@ def test_public_config_reports_registration_mode(client):
     body = client.get("/config/public").json()
     assert body["registration_mode"] in {"open", "invite", "domain"}
     assert isinstance(body["password_reset_by_email"], bool)
+
+
+@pytest.mark.parametrize("method", ["PATCH", "DELETE"])
+def test_browser_may_send_follow_up_and_delete_requests(client, method):
+    # The web app is served from another origin, so the browser preflights
+    # these methods; a missing CORS method silently breaks the buttons.
+    origin = settings.cors_origins[0]
+    resp = client.options("/predictions/1", headers={
+        "Origin": origin, "Access-Control-Request-Method": method,
+        "Access-Control-Request-Headers": "authorization,content-type"})
+    assert resp.status_code == 200
+    assert method in resp.headers["access-control-allow-methods"]
