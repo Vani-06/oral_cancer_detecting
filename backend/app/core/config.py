@@ -112,6 +112,12 @@ class Settings:
     SMTP_FROM: str = os.getenv("SMTP_FROM", "no-reply@oralsentinel.local")
     REGISTER_MAX_PER_HOUR: int = int(os.getenv("REGISTER_MAX_PER_HOUR", "5"))
     PREDICT_MAX_PER_HOUR: int = int(os.getenv("PREDICT_MAX_PER_HOUR", "30"))
+    # Temperature scaling of the cancer model's single-photo probability,
+    # fitted on validation for v7 (ml/scripts/review_analyses.py: test ECE
+    # 0.094 -> 0.070). Applies to the stored confidence only; the label
+    # cut-off and the triage thresholds below use the uncalibrated scores
+    # they were validated on. Refit when the model changes.
+    TEMPERATURE: float = float(os.getenv("TEMPERATURE", "1.6226"))
     TRIAGE_NO_CANCER_BELOW: float = float(os.getenv("TRIAGE_NO_CANCER_BELOW", "0.1447"))
     TRIAGE_CANCER_AT: float = float(os.getenv("TRIAGE_CANCER_AT", "0.4934"))
     # Same-patient reference: a lesion photo whose features are no further
@@ -144,7 +150,8 @@ class Settings:
         with every analysis and printed on its report (traceability)."""
         stem = lambda v: Path(v).stem if v else "none"  # noqa: E731
         return (f"cancer={stem(self.MODEL_PATH)}; grade={stem(self.GRADING_MODEL_PATH)}; "
-                f"gate={stem(self.GATE_MODEL_PATH)}; triage={self.TRIAGE_NO_CANCER_BELOW}/{self.TRIAGE_CANCER_AT}")
+                f"gate={stem(self.GATE_MODEL_PATH)}; T={self.TEMPERATURE}; "
+                f"triage={self.TRIAGE_NO_CANCER_BELOW}/{self.TRIAGE_CANCER_AT}")
 
     @property
     def is_production(self) -> bool:
@@ -166,6 +173,8 @@ class Settings:
             raise RuntimeError("REGISTRATION_MODE must be open, invite or domain")
         if self.REGISTRATION_MODE == "domain" and not self.ALLOWED_EMAIL_DOMAINS:
             raise RuntimeError("REGISTRATION_MODE=domain needs ALLOWED_EMAIL_DOMAINS")
+        if not 0.05 <= self.TEMPERATURE <= 20:
+            raise RuntimeError("TEMPERATURE must be between 0.05 and 20")
         if not 0.0 < self.TRIAGE_NO_CANCER_BELOW < self.TRIAGE_CANCER_AT <= 1.0:
             raise RuntimeError("Need 0 < TRIAGE_NO_CANCER_BELOW < TRIAGE_CANCER_AT <= 1")
         if self.is_production:

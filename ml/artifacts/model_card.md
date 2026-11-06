@@ -411,3 +411,35 @@ ml/.venv/Scripts/python.exe scripts/stress_test.py
 ml/.venv/Scripts/python.exe scripts/build_photo_gate.py
 ml/.venv/Scripts/python.exe scripts/train_grading.py cv --init imagenet
 ```
+
+
+## Review item 21: zoomed-out cancer photos (v8 experiment)
+
+v7 caught 60.3% of Kaggle test cancers when the photo was zoomed out
+(lesion small in frame), against 84.5% unedited. v8 is v7's recipe plus random
+close-up/zoom crops on both classes (`train.py --zoom-all`), same split
+(case_split_fixed), same 15 epochs.
+
+| | v7 | v8 |
+|---|---|---|
+| Validation accuracy (selection rule) | 0.897 | 0.869 |
+| Test cancers caught, unedited | 84.5% | 79.3% |
+| Test cancers caught, zoomed out | 60.3% | 87.9% |
+| Kaggle healthy called cancer, unedited | 13.0% | 16.9% |
+| Kaggle healthy called cancer, black border / low resolution | 10.4% / 13.0% | 23.4% / 23.4% |
+
+Full probe table: probe_v7_v8.log.
+
+Decision: keep v7. v8 removes the zoom weakness, but by calling cancer more
+often on any altered photo, healthy ones included, and it is worse on
+validation and on unedited photos. The untouched set (fresh_test) was not
+used, so it remains untouched apart from its single earlier use.
+
+Mitigation in the app: the upload page asks for a close-up with the lesion
+filling the photo, and says why.
+
+Item 29 (same session): temperature T = 1.6226 now scales the stored
+probability (test ECE 0.094 -> 0.070). The triage keeps the uncalibrated
+consensus score: re-deriving its conformal thresholds on calibrated scores
+gives the same guarantee but missed 2/58 test cancers against 1/58
+(conformal_triage_T1.62.json), so calibration is not applied there.

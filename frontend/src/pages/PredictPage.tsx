@@ -69,6 +69,11 @@ export function PredictPage() {
       <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
         <div className="flex flex-col gap-6">
           <Card title="Lesion image">
+            <p className="mb-3 text-xs text-slate-500">
+              Take a close-up: the lesion should fill most of the photo, in
+              focus and in good light. The analysis misses more cancers when
+              the lesion is small in a wide shot of the mouth.
+            </p>
             <ImageDropzone
               file={file}
               onFileChange={(next) => {

@@ -41,8 +41,18 @@ ML_DIR = Path(__file__).resolve().parent.parent
 DATA = ML_DIR / "data"
 
 
-def consensus_scores(model, images):
-    return np.mean([st.run(*model, [e(im) for im in images])[0] for e in STABILITY_EDITS], 0)
+def apply_temperature(p, t):
+    """Binary softmax(z / t) from p = softmax(z): sigmoid(logit(p) / t)."""
+    if t == 1.0:
+        return p
+    logit = np.log(np.clip(p, 1e-7, 1 - 1e-7) / np.clip(1 - p, 1e-7, 1))
+    return 1 / (1 + np.exp(-logit / t))
+
+
+def consensus_scores(model, images, temperature=1.0):
+    """Mean calibrated P(cancer) over the 9 edits -- what the app computes."""
+    return np.mean([apply_temperature(st.run(*model, [e(im) for im in images])[0], temperature)
+                    for e in STABILITY_EDITS], 0)
 
 
 def clopper_pearson_upper(k, n, delta):
@@ -103,13 +113,17 @@ def main():
     ap.add_argument("--alpha", type=float, default=0.05, help="target share of cancers called 'no cancer'")
     ap.add_argument("--delta", type=float, default=0.10, help="1 - confidence for the high-probability version")
     ap.add_argument("--beta", type=float, default=0.10, help="max share of non-cancers called 'cancer'")
+    ap.add_argument("--temperature", type=float, default=1.0, help="the app's TEMPERATURE setting")
+    ap.add_argument("--out", default="conformal_triage.json", help="file name under artifacts/")
     args = ap.parse_args()
     model = st.load_model(Path(args.checkpoint))
     val_im, val_y = labelled(DATA / "case_split_fixed" / "val")
     test_im, test_y = labelled(DATA / "kaggle_split_fixed" / "test")
-    sv, stt = consensus_scores(model, val_im), consensus_scores(model, test_im)
+    sv = consensus_scores(model, val_im, args.temperature)
+    stt = consensus_scores(model, test_im, args.temperature)
     hi = lam_hi_for(sv[~val_y], args.beta)
-    out = {"alpha": args.alpha, "delta": args.delta, "beta": args.beta, "lam_hi": hi,
+    out = {"checkpoint": Path(args.checkpoint).name, "temperature": args.temperature,
+           "alpha": args.alpha, "delta": args.delta, "beta": args.beta, "lam_hi": hi,
            "calibration_cancers": int(val_y.sum()), "test_cancers": int(test_y.sum())}
     for name, lo in [("expected_guarantee_CRC", lam_lo_crc(sv[val_y], args.alpha)),
                      ("high_probability_guarantee", lam_lo_hp(sv[val_y], args.alpha, args.delta))]:
@@ -117,7 +131,7 @@ def main():
     # Smallest alpha the high-probability version can certify with this many calibration cancers.
     out["min_certifiable_alpha_at_delta"] = clopper_pearson_upper(0, int(val_y.sum()), args.delta)
     print(json.dumps(out, indent=2))
-    (ML_DIR / "artifacts" / "conformal_triage.json").write_text(json.dumps(out, indent=2))
+    (ML_DIR / "artifacts" / args.out).write_text(json.dumps(out, indent=2))
 
 
 if __name__ == "__main__":

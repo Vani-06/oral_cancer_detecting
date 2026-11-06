@@ -211,8 +211,21 @@ class InferenceService:
                     logits[idx] = float("-inf")
         return self._idx_to_grade[int(logits.argmax().item())]
 
+    @staticmethod
+    def _calibrated(logits: torch.Tensor) -> torch.Tensor:
+        """Class probabilities after temperature scaling (TEMPERATURE, fitted
+        on validation). Monotonic per photo, so it never changes which side
+        of a cut-off a single prediction falls on; it makes the numbers
+        closer to observed frequencies."""
+        return F.softmax(logits / settings.TEMPERATURE, dim=1)
+
     def _consensus_score(self, image: Image.Image) -> float:
-        """Mean P(cancer) over the STABILITY_EDITS of the photo."""
+        """Mean P(cancer) over the STABILITY_EDITS of the photo.
+
+        Deliberately uncalibrated: the triage thresholds were set on this
+        score by conformal risk control, whose guarantee holds for any score.
+        Re-deriving them on temperature-scaled scores gave the same guarantee
+        but missed one more test cancer (ml/artifacts/conformal_triage_T1.62.json)."""
         batch = torch.stack([self._transform(edit(image)) for edit in STABILITY_EDITS])
         with torch.no_grad():
             p = F.softmax(self._model(batch), dim=1)[:, self._label_to_idx["Cancer"]]
@@ -290,7 +303,10 @@ class InferenceService:
 
         try:
             output = self._model(input_tensor)
+            # The label uses the uncalibrated probability, against the
+            # cut-off validated on it; the stored confidence is calibrated.
             probs = F.softmax(output, dim=1)[0]
+            calibrated = self._calibrated(output.detach())[0]
             # The Cancer/Non-Cancer cut-off is a clinical operating-point
             # decision (missed cancers vs. false alarms), not a fixed 0.5 --
             # see the threshold table in ml/artifacts/model_card.md.
@@ -300,7 +316,7 @@ class InferenceService:
                 predicted_idx = cancer_idx
             else:
                 predicted_idx = self._label_to_idx["Non-Cancer"]
-            confidence = float(probs[predicted_idx].item())
+            confidence = float(calibrated[predicted_idx].item())
 
             self._model.zero_grad()
             output[0, predicted_idx].backward()

@@ -318,3 +318,17 @@ def test_every_analysis_records_its_model_version(client, auth, enabled_inferenc
     body = client.get(f"/predictions/{post(client, auth)['prediction_id']}", headers=auth).json()
     assert body["model_version"] == settings.analysis_version
     assert "cancer=" in body["model_version"] and "triage=" in body["model_version"]
+
+
+def test_stored_confidence_is_temperature_scaled(monkeypatch):
+    # softmax(z / T): with T = 2, logits (0, 4) give the same probabilities as (0, 2) unscaled.
+    import torch
+    from torch.nn import functional as F
+
+    from app.services.inference_service import InferenceService
+
+    monkeypatch.setattr(settings, "TEMPERATURE", 2.0)
+    scaled = InferenceService._calibrated(torch.tensor([[0.0, 4.0]]))
+    assert torch.allclose(scaled, F.softmax(torch.tensor([[0.0, 2.0]]), dim=1))
+    # Monotonic: it never changes which class is more likely.
+    assert scaled.argmax() == 1
