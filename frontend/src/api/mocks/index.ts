@@ -9,6 +9,7 @@
 import { ApiError } from '../client'
 import type {
   AuthResponse,
+  FollowUpStatus,
   LoginRequest,
   PatientMetadata,
   PredictionHistoryEntry,
@@ -16,7 +17,7 @@ import type {
   RegisterRequest,
   User,
 } from '../types'
-import { addRecord, allRecords, findRecord, toHistoryEntry } from './fixtures'
+import { addRecord, allRecords, findRecord, removeRecord, toHistoryEntry } from './fixtures'
 
 /** Simulate network latency so loading states are actually exercised. */
 function delay(minMs = 350, maxMs = 750): Promise<void> {
@@ -92,4 +93,23 @@ export async function getPrediction(id: number): Promise<PredictionOutcome> {
   }
 
   return record
+}
+
+export async function setFollowUp(
+  id: number,
+  status: FollowUpStatus,
+  note?: string,
+): Promise<PredictionOutcome> {
+  await delay()
+  const record = findRecord(id)
+  if (!record) throw new ApiError(404, `Prediction ${id} was not found.`)
+  record.follow_up = status
+  record.follow_up_note = note ?? null
+  record.follow_up_at = new Date().toISOString()
+  return record
+}
+
+export async function deletePrediction(id: number): Promise<void> {
+  await delay()
+  removeRecord(id)
 }

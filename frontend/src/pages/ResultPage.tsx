@@ -12,6 +12,7 @@ import { HeatmapViewer } from '@/components/result/HeatmapViewer'
 import { MetadataSummary } from '@/components/result/MetadataSummary'
 import { PredictionBadge } from '@/components/result/PredictionBadge'
 import { ReportDownload } from '@/components/result/ReportDownload'
+import { DeleteAnalysis, FeedbackForm, FollowUpPanel } from '@/components/result/ResultWorkflow'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Spinner } from '@/components/ui/Spinner'
@@ -60,19 +61,24 @@ function ResultView({
   const [loading, setLoading] = useState(!providedOutcome)
   const [error, setError] = useState<string | null>(null)
 
-  // Only fetch when the prediction did not arrive with the navigation, i.e. on
-  // a deep link or a reload.
+  // Always load the stored record. A result handed over by the upload page is
+  // shown at once, but the upload response lacks fields only the stored
+  // record has (follow-up status, consent time, analysis version).
   useEffect(() => {
-    if (providedOutcome) return
-
     let cancelled = false
 
     getPrediction(predictionId)
       .then((result) => {
-        if (!cancelled) setOutcome(result)
+        if (cancelled) return
+        setOutcome((current) => ({
+          ...result,
+          // Keep the local preview when the server has no image URL to offer.
+          image_url: result.image_url ?? current?.image_url,
+        }))
       })
       .catch((cause: unknown) => {
-        if (cancelled) return
+        // The handed-over result is still worth showing if the reload failed.
+        if (cancelled || providedOutcome) return
         setError(
           cause instanceof ApiError
             ? cause.detail
@@ -297,6 +303,17 @@ function ResultView({
                 pdfUrl={outcome.pdf_url}
               />
             </Card>
+
+            <Card title="Follow-up">
+              <FollowUpPanel outcome={outcome} onChange={setOutcome} />
+            </Card>
+
+            <Card title="Report a wrong result">
+              <FeedbackForm
+                predictionId={outcome.prediction_id}
+                initialCount={outcome.feedback_count ?? 0}
+              />
+            </Card>
           </div>
         </div>
       )}
@@ -309,6 +326,15 @@ function ResultView({
             No patient metadata was recorded with this analysis.
           </p>
         )}
+        {outcome.consent_at && (
+          <p className="mt-3 text-xs text-slate-500">
+            Patient consent confirmed {formatDateTime(outcome.consent_at)}.
+          </p>
+        )}
+      </Card>
+
+      <Card title="Delete">
+        <DeleteAnalysis predictionId={outcome.prediction_id} />
       </Card>
     </div>
   )

@@ -48,7 +48,8 @@ export function DashboardPage() {
     const pending = items.filter((item) => item.prediction === 'Pending').length
     const cancer = items.filter((item) => item.prediction === 'Cancer').length
     const nonCancer = items.filter((item) => item.prediction === 'Non-Cancer').length
-    return { total, pending, cancer, nonCancer }
+    const followUp = items.filter((item) => item.follow_up === 'needed')
+    return { total, pending, cancer, nonCancer, followUp }
   }, [items])
 
   return (
@@ -80,10 +81,44 @@ export function DashboardPage() {
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <SummaryCard label="Total analyses" value={summary.total} />
-            <SummaryCard label="Pending inference" value={summary.pending} />
+            <SummaryCard label="Follow-up needed" value={summary.followUp.length} />
             <SummaryCard label="Cancer" value={summary.cancer} />
             <SummaryCard label="No cancer" value={summary.nonCancer} />
           </div>
+
+          {summary.followUp.length > 0 && (
+            <Card title="Needs follow-up">
+              <p className="mb-3 text-xs text-slate-500">
+                Cancer or inconclusive results with no referral, retake or closure
+                recorded yet.
+              </p>
+              <ul className="divide-y divide-slate-200" data-testid="follow-up-list">
+                {summary.followUp.map((item) => (
+                  <li
+                    key={item.prediction_id}
+                    className="flex flex-wrap items-center justify-between gap-3 py-2"
+                  >
+                    <span className="text-sm text-slate-800">
+                      Prediction #{item.prediction_id}
+                      <span className="text-slate-500"> · {formatDateTime(item.created_at)}</span>
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <PredictionBadge
+                        prediction={item.prediction}
+                        assessment={item.assessment}
+                        size="sm"
+                      />
+                      <Link to={`/predictions/${item.prediction_id}`}>
+                        <Button variant="secondary" size="sm">
+                          Record follow-up
+                        </Button>
+                      </Link>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
           <Card
             title="Recent analyses"

@@ -5,9 +5,11 @@
  * every page works when the API and frontend are deployed separately.
  */
 
-import { getJson, postForm, resolveUrl, USE_MOCKS } from './client'
+import { deleteRequest, getJson, patchJson, postForm, postJson, resolveUrl, USE_MOCKS } from './client'
 import * as mocks from './mocks'
 import type {
+  FeedbackRequest,
+  FollowUpStatus,
   PatientMetadata,
   PredictionHistoryEntry,
   PredictionOutcome,
@@ -38,11 +40,13 @@ export async function uploadPrediction(
   file: File,
   metadata?: PatientMetadata,
   referenceFile?: File | null,
+  consentConfirmed = false,
 ): Promise<PredictionOutcome> {
   if (USE_MOCKS) return mocks.uploadPrediction(file, metadata)
 
   const form = new FormData()
   form.append('file', file)
+  form.append('consent_confirmed', consentConfirmed ? 'true' : 'false')
   if (referenceFile) form.append('reference_file', referenceFile)
 
   if (SEND_METADATA && metadata) {
@@ -85,4 +89,29 @@ export function getPrediction(id: number): Promise<PredictionOutcome> {
 /** Absolute URL of the generated PDF report, for a download link. */
 export function reportUrl(predictionId: number): string {
   return resolveUrl(`/reports/${predictionId}`)
+}
+
+/** Record what happened after the result: referred, retake asked, closed. */
+export function setFollowUp(
+  predictionId: number,
+  status: FollowUpStatus,
+  note?: string,
+): Promise<PredictionOutcome> {
+  if (USE_MOCKS) return mocks.setFollowUp(predictionId, status, note)
+  return patchJson<PredictionOutcome>(`/predictions/${predictionId}/follow-up`, {
+    status,
+    note: note || null,
+  }).then(normalizeOutcome)
+}
+
+/** Report that a result was wrong (biopsy disagreed, photo refused wrongly...). */
+export function sendFeedback(predictionId: number, feedback: FeedbackRequest): Promise<unknown> {
+  if (USE_MOCKS) return Promise.resolve({})
+  return postJson(`/predictions/${predictionId}/feedback`, feedback)
+}
+
+/** Permanently delete the analysis with its photo, heatmap and report. */
+export function deletePrediction(predictionId: number): Promise<void> {
+  if (USE_MOCKS) return mocks.deletePrediction(predictionId)
+  return deleteRequest(`/predictions/${predictionId}`)
 }

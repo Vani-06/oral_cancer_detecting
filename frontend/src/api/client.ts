@@ -138,3 +138,15 @@ export function postJson<T>(path: string, body: unknown): Promise<T> {
 export function postForm<T>(path: string, form: FormData): Promise<T> {
   return request<T>(path, { method: 'POST', body: form })
 }
+
+export function patchJson<T>(path: string, body: unknown): Promise<T> {
+  return request<T>(path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function deleteRequest(path: string): Promise<void> {
+  return request<void>(path, { method: 'DELETE' })
+}

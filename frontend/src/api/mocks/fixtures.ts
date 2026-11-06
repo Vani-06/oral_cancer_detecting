@@ -191,6 +191,11 @@ export function addRecord(file: File, imageUrl: string): MockRecord {
   return record
 }
 
+export function removeRecord(id: number): void {
+  const index = records.findIndex((record) => record.prediction_id === id)
+  if (index >= 0) records.splice(index, 1)
+}
+
 export function toHistoryEntry(record: MockRecord): PredictionHistoryEntry {
   return {
     prediction_id: record.prediction_id,
@@ -198,5 +203,6 @@ export function toHistoryEntry(record: MockRecord): PredictionHistoryEntry {
     dysplasia_grade: record.dysplasia_grade,
     created_at: record.created_at,
     image_url: record.image_url,
+    follow_up: record.follow_up,
   }
 }

@@ -1,10 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link } from 'react-router-dom'
 import { z } from 'zod'
 
+import { publicConfig } from '@/api/account'
 import { ApiError } from '@/api/client'
+import type { PublicConfig } from '@/api/types'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useAuth } from '@/hooks/useAuth'
@@ -22,6 +24,7 @@ const registerSchema = z.object({
   confirms_professional_use: z.literal(true, {
     error: 'Please confirm to create an account',
   }),
+  invite_code: z.string().optional(),
 })
 
 type RegisterValues = z.infer<typeof registerSchema>
@@ -29,6 +32,13 @@ type RegisterValues = z.infer<typeof registerSchema>
 export function RegisterPage() {
   const { register: createAccount } = useAuth()
   const [formError, setFormError] = useState<string | null>(null)
+  const [config, setConfig] = useState<PublicConfig | null>(null)
+
+  // How sign-up is restricted on this server (open, invite code, or domain).
+  useEffect(() => {
+    publicConfig().then(setConfig).catch(() => setConfig(null))
+  }, [])
+  const inviteOnly = config?.registration_mode === 'invite'
 
   const {
     register,
@@ -40,7 +50,10 @@ export function RegisterPage() {
     setFormError(null)
     try {
       // PublicOnlyRoute performs the redirect once the user is set.
-      await createAccount(values)
+      await createAccount({
+        ...values,
+        invite_code: inviteOnly ? values.invite_code?.trim() : undefined,
+      })
     } catch (error) {
       setFormError(
         error instanceof ApiError
@@ -77,6 +90,19 @@ export function RegisterPage() {
             error={errors.email?.message}
             {...register('email')}
           />
+          {inviteOnly && (
+            <Input
+              label="Invitation code"
+              autoComplete="off"
+              hint="Sign-up on this server is by invitation. Ask the administrator for a code."
+              {...register('invite_code')}
+            />
+          )}
+          {config?.registration_mode === 'domain' && (
+            <p className="text-xs text-slate-500">
+              Sign-up is limited to approved institutional email addresses.
+            </p>
+          )}
           <Input
             label="Password"
             type="password"

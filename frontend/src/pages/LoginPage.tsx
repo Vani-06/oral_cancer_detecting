@@ -18,6 +18,7 @@ const loginSchema = z.object({
       'Enter a valid email address',
     ),
   password: z.string().min(1, 'Password is required'),
+  mfa_code: z.string().optional(),
 })
 
 type LoginValues = z.infer<typeof loginSchema>
@@ -25,6 +26,8 @@ type LoginValues = z.infer<typeof loginSchema>
 export function LoginPage() {
   const { login } = useAuth()
   const [formError, setFormError] = useState<string | null>(null)
+  // Shown once the server says this account uses two-factor sign-in.
+  const [needsCode, setNeedsCode] = useState(false)
 
   const {
     register,
@@ -37,8 +40,17 @@ export function LoginPage() {
     try {
       // No navigate() here -- PublicOnlyRoute redirects once the user is set,
       // and honours the destination remembered by ProtectedRoute.
-      await login(values)
+      await login({
+        email: values.email,
+        password: values.password,
+        mfa_code: needsCode ? values.mfa_code?.trim() : undefined,
+      })
     } catch (error) {
+      if (error instanceof ApiError && error.status === 403) {
+        setNeedsCode(true)
+        setFormError(error.detail)
+        return
+      }
       setFormError(
         error instanceof ApiError
           ? error.detail
@@ -77,6 +89,17 @@ export function LoginPage() {
             error={errors.password?.message}
             {...register('password')}
           />
+          {needsCode && (
+            <Input
+              label="Authentication code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="123456"
+              hint="The 6-digit code from your authenticator app."
+              autoFocus
+              {...register('mfa_code')}
+            />
+          )}
 
           {formError && (
             <p
@@ -90,6 +113,13 @@ export function LoginPage() {
           <Button type="submit" loading={isSubmitting} size="lg">
             Sign in
           </Button>
+
+          <Link
+            to="/forgot-password"
+            className="text-center text-sm text-slate-600 underline"
+          >
+            Forgot password?
+          </Link>
 
           {USE_MOCKS && (
             <p className="text-center text-xs text-slate-500">

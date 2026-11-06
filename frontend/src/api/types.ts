@@ -26,6 +26,24 @@ export type Assessment = 'cancer' | 'no_cancer' | 'inconclusive'
  */
 export type ReferenceStatus = 'used' | 'not_normal'
 
+/**
+ * Referral tracking. Cancer and inconclusive results start as 'needed';
+ * the clinician records what happened next.
+ */
+export type FollowUpStatus = 'needed' | 'referred' | 'retake_requested' | 'closed'
+
+export type FeedbackKind =
+  | 'cancer_result_wrong'
+  | 'grade_wrong'
+  | 'photo_refused_wrongly'
+  | 'other'
+
+export interface FeedbackRequest {
+  kind: FeedbackKind
+  actual_diagnosis?: string
+  comment?: string
+}
+
 /** Mirrors `PredictionUploadResponse`. What POST /predict returns today. */
 export interface PredictionUploadResponse {
   prediction_id: number
@@ -64,6 +82,7 @@ export interface PredictionHistoryItem {
   reference_status?: ReferenceStatus | null
   created_at: string
   image_url?: string | null
+  follow_up?: FollowUpStatus | null
 }
 
 /**
@@ -88,6 +107,13 @@ export interface PredictionOutcome extends Omit<PredictionResult, 'prediction'> 
   metadata?: PatientMetadata | null
   /** Models and thresholds that produced this result. */
   model_version?: string | null
+  follow_up?: FollowUpStatus | null
+  follow_up_note?: string | null
+  follow_up_at?: string | null
+  /** When the clinician confirmed the patient's consent to the upload. */
+  consent_at?: string | null
+  /** How many "wrong result" reports were filed on this analysis. */
+  feedback_count?: number
 }
 
 /** A history row plus the extras the table renders. */
@@ -139,6 +165,7 @@ export interface User {
   id: number
   email: string
   full_name: string
+  mfa_enabled?: boolean
 }
 
 /** What POST /login and POST /register return. */
@@ -151,10 +178,33 @@ export interface AuthResponse {
 export interface LoginRequest {
   email: string
   password: string
+  /** Six-digit authenticator code, when two-factor sign-in is on. */
+  mfa_code?: string
 }
 
 export interface RegisterRequest extends LoginRequest {
   full_name: string
   /** Must be true: a health professional with the patient's consent. */
   confirms_professional_use: true
+  /** Required when sign-up is invite-only. */
+  invite_code?: string
+}
+
+/** GET /config/public: what the sign-in pages should offer. */
+export interface PublicConfig {
+  allow_registration: boolean
+  registration_mode: 'open' | 'invite' | 'domain'
+  password_reset_by_email: boolean
+}
+
+export interface MfaSetup {
+  secret: string
+  otpauth_uri: string
+}
+
+export interface AuditEvent {
+  action: string
+  prediction_id: number | null
+  ip: string | null
+  created_at: string
 }

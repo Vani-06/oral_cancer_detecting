@@ -9,6 +9,8 @@ export interface AuthContextValue {
   login: (credentials: LoginRequest) => Promise<void>
   register: (payload: RegisterRequest) => Promise<void>
   logout: () => void
+  /** Replace the signed-in user, e.g. after two-factor sign-in is turned on. */
+  updateUser: (user: User) => void
 }
 
 /**

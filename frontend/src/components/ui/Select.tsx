@@ -29,7 +29,8 @@ export function Select({
       </label>
       <select
         id={selectId}
-        defaultValue=""
+        // Uncontrolled selects start on the placeholder; controlled ones use `value`.
+        defaultValue={props.value === undefined ? '' : undefined}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
         className={cn(

@@ -16,17 +16,21 @@ export function PredictPage() {
   const [fileError, setFileError] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [consent, setConsent] = useState(false)
+  const [consentError, setConsentError] = useState(false)
 
   const MISSING_IMAGE = 'Select a lesion image before running the analysis.'
 
   /** Runs when the metadata form itself is invalid, so both problems show at once. */
   function handleInvalid() {
     setFileError(file ? null : MISSING_IMAGE)
+    setConsentError(!consent)
   }
 
   async function handleAnalyse(metadata: PatientMetadataValues) {
-    if (!file) {
-      setFileError(MISSING_IMAGE)
+    if (!file || !consent) {
+      setFileError(file ? null : MISSING_IMAGE)
+      setConsentError(!consent)
       return
     }
 
@@ -37,7 +41,7 @@ export function PredictPage() {
     try {
       // Metadata is sent with the image and also carried through navigation so
       // the result is immediately useful before a reload.
-      const outcome = await uploadPrediction(file, metadata, referenceFile)
+      const outcome = await uploadPrediction(file, metadata, referenceFile, consent)
       navigate(`/predictions/${outcome.prediction_id}`, {
         state: { outcome, metadata },
       })
@@ -100,6 +104,27 @@ export function PredictPage() {
             submitting={submitting}
             footer={
               <div className="flex flex-col gap-3">
+                <label className="flex items-start gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4"
+                    checked={consent}
+                    disabled={submitting}
+                    onChange={(event) => {
+                      setConsent(event.target.checked)
+                      if (event.target.checked) setConsentError(false)
+                    }}
+                  />
+                  <span>
+                    The patient has consented to these photos being uploaded and
+                    analysed.
+                  </span>
+                </label>
+                {consentError && (
+                  <p role="alert" className="text-risk-high text-sm">
+                    Confirm that the patient has consented before running the analysis.
+                  </p>
+                )}
                 {fileError && (
                   <p
                     role="alert"

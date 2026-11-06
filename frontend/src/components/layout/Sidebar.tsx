@@ -30,10 +30,19 @@ function HistoryIcon() {
   )
 }
 
+function AccountIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+      <path d="M10 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm-7 15c0-3.3 3.1-5.5 7-5.5s7 2.2 7 5.5v1H3v-1z" />
+    </svg>
+  )
+}
+
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', Icon: DashboardIcon, end: true },
   { to: '/predict', label: 'New Analysis', Icon: ScanIcon, end: false },
   { to: '/history', label: 'History', Icon: HistoryIcon, end: false },
+  { to: '/account', label: 'Account', Icon: AccountIcon, end: false },
 ]
 
 /** Vertical navigation. Hidden below the md breakpoint -- see MobileNav. */
