@@ -35,6 +35,7 @@ from torchvision import transforms
 from torchvision.models import resnet50
 
 from app.core.config import settings
+from app.services.photo_quality import quality_problem
 
 _GRADCAM_ALPHA = 0.45
 
@@ -268,6 +269,12 @@ class InferenceService:
             # The reference never turns a result into "no_cancer".
             assessment = "inconclusive"
         return assessment, status
+
+    def quality_problem(self, image_path: Path) -> str | None:
+        """Why the photo is too dark, washed out or blurred to analyse, or
+        None. Runs together with the photo check (only when GATE_MODEL_PATH
+        is set), so test set-ups without a photo check skip it too."""
+        return None if self.gate is None else quality_problem(_open_photo(image_path))
 
     def looks_like_oral_photo(self, image_path: Path) -> bool:
         """True when no photo check is configured, or the check accepts it."""

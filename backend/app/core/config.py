@@ -118,6 +118,9 @@ class Settings:
     # cut-off and the triage thresholds below use the uncalibrated scores
     # they were validated on. Refit when the model changes.
     TEMPERATURE: float = float(os.getenv("TEMPERATURE", "1.6226"))
+    # Incident switch: refuse new analyses (503) while a serious problem is
+    # investigated. Past results stay readable.
+    ANALYSIS_PAUSED: bool = os.getenv("ANALYSIS_PAUSED", "false").lower() in {"1", "true", "yes"}
     TRIAGE_NO_CANCER_BELOW: float = float(os.getenv("TRIAGE_NO_CANCER_BELOW", "0.1447"))
     TRIAGE_CANCER_AT: float = float(os.getenv("TRIAGE_CANCER_AT", "0.4934"))
     # Same-patient reference: a lesion photo whose features are no further

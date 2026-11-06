@@ -8,7 +8,10 @@ before real patient data is used. Written in response to the external review
 
 | Data | Where | Notes |
 |---|---|---|
-| Clinician account: name, email, bcrypt password hash | Database (`users`) | No plain-text passwords |
+| Clinician account: name, email, bcrypt password hash, two-factor secret (if on), hashed one-time reset token | Database (`users`) | No plain-text passwords or tokens |
+| Access log: who signed in, uploaded, viewed, downloaded, followed up, deleted; time and IP | Database (`audit_events`) | Kept when an analysis is deleted, so deletions stay accountable |
+| Follow-up status and note, consent time, wrong-result reports | Database (`predictions`, `result_feedback`) | |
+| One-time invitation codes | Database (`invites`) | Stored hashed |
 | Analyses: photo file name, results, model version, patient details (age, sex, habits, site, symptoms, history, notes) | Database (`predictions`) | No patient name field; an optional free-text patient reference |
 | Lesion and reference photos, heatmaps | `UPLOAD_DIR` (a private Cloud Storage bucket in the cloud deployment) | Random file names; served only to the uploading clinician |
 | PDF reports | `REPORT_DIR` | Generated on demand, served only to the uploading clinician |
@@ -24,17 +27,32 @@ before real patient data is used. Written in response to the external review
 - Cloud deployment (Google Cloud, Mumbai): Cloud SQL and Cloud Storage
   encrypt data at rest by default; the bucket blocks public access; daily
   database backups; secrets in Secret Manager.
-- Every result records the model files and thresholds that produced it.
+- Every result records the model files, temperature and thresholds that produced it.
+- Sign-up can be limited to invited clinicians (`REGISTRATION_MODE=invite`,
+  codes from `backend/scripts/create_invite.py`) or institutional email
+  domains (`REGISTRATION_MODE=domain`, `ALLOWED_EMAIL_DOMAINS`).
+- Optional two-factor sign-in (authenticator app, RFC 6238), turned on per
+  account from the Account page.
+- Self-service password reset by a one-time emailed link (needs `SMTP_*`
+  settings; refused in production without them).
+- Access log of every sign-in (including failed ones), upload, view, download,
+  follow-up change and deletion; each user can read their own on the Account page.
+- Each upload requires the clinician to confirm the patient's consent; the
+  time is stored with the analysis and shown on the result.
+- A clinician can permanently delete an analysis with its photos, heatmap and
+  report. `backend/scripts/purge_expired.py` deletes analyses older than
+  `RETENTION_DAYS` (0 = keep); schedule it daily once the period is agreed.
+- Photos too dark, washed out or blurred to analyse are refused with a reason.
+- Incident and breach response: see `docs/incident-and-breach-response.md`.
 
 ## Not yet in place (required before real patient data)
 
 | Gap | Proposed fix |
 |---|---|
-| No verification that a user is a clinician | Invite-only accounts or institutional email check |
-| No multi-factor authentication or self-service password reset | Add TOTP MFA and an email reset flow; until then, admins reset with `backend/scripts/reset_password.py` |
-| No audit log of who viewed or downloaded what | Application-level access log |
-| No retention or deletion policy; no delete-my-data function | Agree retention with the clinical lead; add deletion of an analysis and its files |
-| Consent is a self-declaration only | Record consent per patient, per the ethics approval |
+| Invite / domain sign-up exists but who may be invited is not decided | Clinical lead decides; run with `REGISTRATION_MODE=invite` |
+| Two-factor sign-in is optional | Make it mandatory once all users have set it up |
+| Retention period not agreed | Clinical lead and ethics committee set `RETENTION_DAYS` |
+| Consent is the clinician's confirmation per upload, not a signed patient form | Keep the signed form in the clinic record, per the ethics approval |
 | Local development and non-Google options have no encryption at rest or backups | Use encrypted disks and scheduled backups on any other host |
 | Security reviewed internally only | Independent penetration test before real patient data |
 | Legal basis under the DPDP Act 2023 not assessed | Legal advice; data residency in India is currently a policy choice |

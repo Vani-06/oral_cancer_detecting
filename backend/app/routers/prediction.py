@@ -135,6 +135,11 @@ async def upload_prediction(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> PredictionUploadResponse:
+    if settings.ANALYSIS_PAUSED:
+        # Incident switch (docs/incident-and-breach-response.md): no new
+        # results while a serious problem is investigated; past results stay readable.
+        raise HTTPException(status_code=503, detail="New analyses are paused while a problem is investigated. "
+                                                    "Existing results and reports are still available.")
     retry_after = predict_limiter.hit(str(user.id))
     if retry_after is not None:
         raise HTTPException(

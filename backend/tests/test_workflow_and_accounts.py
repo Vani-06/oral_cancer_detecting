@@ -35,6 +35,15 @@ def test_upload_requires_patient_consent(client, auth):
     assert detail["consent_at"] is not None
 
 
+def test_analyses_can_be_paused_during_an_incident(client, auth, monkeypatch):
+    pid = upload(client, auth).json()["prediction_id"]
+    monkeypatch.setattr(settings, "ANALYSIS_PAUSED", True)
+    resp = upload(client, auth)
+    assert resp.status_code == 503 and "paused" in resp.json()["detail"]
+    # Past results stay readable.
+    assert client.get(f"/predictions/{pid}", headers=auth).status_code == 200
+
+
 def test_follow_up_can_be_recorded(client, auth):
     pid = upload(client, auth).json()["prediction_id"]
     resp = client.patch(f"/predictions/{pid}/follow-up", headers=auth,
@@ -57,6 +66,9 @@ def test_cancer_or_inconclusive_results_start_as_follow_up_needed(client, auth, 
 
         def looks_like_oral_photo(self, path):
             return True
+
+        def quality_problem(self, path):
+            return None
 
         def predict(self, image_path, heatmap_output_path, reference_path=None):
             return InferenceResult(label="Cancer", confidence=0.9, dysplasia_grade="severe",

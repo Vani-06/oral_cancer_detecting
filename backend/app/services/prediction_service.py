@@ -125,11 +125,19 @@ class PredictionService:
             checks.append((saved[1], NOT_AN_ORAL_REFERENCE))
         # Refused before anything is recorded: a result for an image that is
         # not an oral photo would be meaningless, whichever label it got.
-        for path, message in checks:
-            if not inference_service.looks_like_oral_photo(path):
-                for p in saved:
-                    p.unlink(missing_ok=True)
-                raise ValueError(message)
+        # Content first (is it a mouth at all?), then quality (can it be analysed?).
+        problem = next((message for path, message in checks
+                        if not inference_service.looks_like_oral_photo(path)), None)
+        for index, (path, _) in enumerate(checks):
+            if problem is not None:
+                break
+            quality = inference_service.quality_problem(path)
+            if quality is not None:
+                problem = quality if index == 0 else f"Opposite-side photo: {quality}"
+        if problem is not None:
+            for p in saved:
+                p.unlink(missing_ok=True)
+            raise ValueError(problem)
         prediction = Prediction(
             user_id=user.id,
             filename=filename,

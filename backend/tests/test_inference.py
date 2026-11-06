@@ -172,9 +172,12 @@ def test_report_shows_grade_and_detection_but_no_score(tmp_root):
 
 
 @pytest.fixture
-def gated_inference(tmp_root, enabled_inference):
+def gated_inference(tmp_root, enabled_inference, monkeypatch):
     """The photo check built from a single reference photo with a tiny
-    threshold: exactly that photo is accepted, anything else is refused."""
+    threshold: exactly that photo is accepted, anything else is refused.
+    The test photos are flat colours, which the quality check would rightly
+    call blurred, so it is switched off here (tested in test_photo_quality.py)."""
+    monkeypatch.setattr(inference_module, "quality_problem", lambda image: None)
     reference = Image.open(io.BytesIO(jpeg_bytes(color=(190, 95, 95)))).convert("RGB")
     torch.manual_seed(0)
     backbone = resnet50(weights=None)

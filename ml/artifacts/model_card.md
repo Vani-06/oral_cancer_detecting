@@ -443,3 +443,25 @@ probability (test ECE 0.094 -> 0.070). The triage keeps the uncalibrated
 consensus score: re-deriving its conformal thresholds on calibrated scores
 gives the same guarantee but missed 2/58 test cancers against 1/58
 (conformal_triage_T1.62.json), so calibration is not applied there.
+
+## Review item 23: photo check on images that are not usable oral photos
+
+`ml/scripts/gate_ood_test.py`. Accepted by the photo check alone, and by the
+photo check plus the quality check now applied before analysis
+(`backend/app/services/photo_quality.py`, cut-offs below every real photo in
+`photo_quality_stats.py`):
+
+| Images | Photo check only | Photo check + quality check |
+|---|---|---|
+| Histopathology slide photos (not oral photos) | 5 / 100 | 5 / 100 |
+| Synthetic blank, noise, text page, gradient, checkerboard | 0 / 25 | 0 / 25 |
+| Development-test oral photos, unedited | 135 / 135 | 135 / 135 |
+| Real clinical oral photos | 98 / 100 | 98 / 100 |
+| Oral photos, strong blur | 10 / 135 | 1 / 135 |
+| Oral photos, very dark | 134 / 135 | 0 / 135 |
+| Oral photos, over-exposed | 110 / 135 | 18 / 135 |
+| Oral photos, tiny (32 px) upscaled | 90 / 135 | 40 / 135 |
+| Oral photos, mostly cropped away | 8 / 135 | 7 / 135 |
+
+Still untested: X-rays and photos of other body sites (no such images
+available locally).
