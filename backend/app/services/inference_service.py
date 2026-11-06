@@ -146,6 +146,27 @@ class PhotoGate:
         return self.distance(image) <= self.threshold
 
 
+def _share_identical_weights(source: torch.nn.Module, target: torch.nn.Module) -> int:
+    """Points target's parameters at source's wherever they are identical.
+
+    The cancer, grading and photo-check networks all keep ImageNet's frozen
+    weights below layer4, so those tensors are duplicated three times in
+    memory. Batch-norm running statistics drifted during training and are
+    buffers, not parameters, so they stay per model and results are
+    unchanged. Returns the number of values now shared.
+    """
+    shared = 0
+    src = dict(source.named_parameters())
+    for name, param in list(target.named_parameters()):
+        if name.startswith(("layer4", "fc")) or name not in src:
+            continue
+        if src[name].shape == param.shape and torch.equal(src[name], param):
+            module_name, _, attr = name.rpartition(".")
+            setattr(target.get_submodule(module_name), attr, src[name])
+            shared += param.numel()
+    return shared
+
+
 class InferenceService:
     def __init__(self) -> None:
         self.enabled = False
@@ -169,6 +190,12 @@ class InferenceService:
             self._grading_model, self._grading_transform, grade_to_idx = grading
             self._idx_to_grade = {v: _GRADE_NAMES[k] for k, v in grade_to_idx.items()}
             self.grading_enabled = True
+
+        self.shared_values = 0
+        if self.grading_enabled:
+            self.shared_values += _share_identical_weights(self._model, self._grading_model)
+        if self.gate is not None:
+            self.shared_values += _share_identical_weights(self._model, self.gate._model)
 
     def _grade(self, image: Image.Image, cancer: bool) -> str | None:
         if not self.grading_enabled:
