@@ -14,7 +14,7 @@ import torch
 from PIL import Image
 from torchvision.models import resnet50
 
-from conftest import VALID_METADATA, jpeg_bytes, register
+from conftest import CONSENT, VALID_METADATA, jpeg_bytes, register
 from app.core.config import settings
 from app.services import inference_service as inference_module
 from app.services import prediction_service as prediction_module
@@ -58,7 +58,7 @@ def enabled_inference(tmp_root):
 
 
 def post(client, auth, content=None, metadata=None):
-    data = {"metadata_json": json.dumps(metadata)} if metadata else {}
+    data = {**CONSENT, **({"metadata_json": json.dumps(metadata)} if metadata else {})}
     files = {"file": ("lesion.jpg", content or jpeg_bytes(), "image/jpeg")}
     resp = client.post("/predict", headers=auth, files=files, data=data)
     assert resp.status_code == 201, resp.text
@@ -199,7 +199,7 @@ def test_photo_check_refuses_non_oral_images_and_keeps_nothing(client, auth, gat
     uploads_before = set((tmp_root / "uploads").iterdir())
     history_before = client.get("/predictions", headers=auth).json()
     files = {"file": ("lesion.jpg", jpeg_bytes(color=(10, 200, 30)), "image/jpeg")}
-    refused = client.post("/predict", headers=auth, files=files)
+    refused = client.post("/predict", headers=auth, files=files, data=CONSENT)
     assert refused.status_code == 400
     assert "does not look like a clinical photo of the mouth" in refused.json()["detail"]
     assert set((tmp_root / "uploads").iterdir()) == uploads_before
@@ -251,7 +251,7 @@ def jpeg_of(color):
 
 def post_pair(client, auth, lesion, reference):
     files = {"file": ("lesion.jpg", lesion, "image/jpeg"), "reference_file": ("other_side.jpg", reference, "image/jpeg")}
-    return client.post("/predict", headers=auth, files=files)
+    return client.post("/predict", headers=auth, files=files, data=CONSENT)
 
 
 def test_three_way_assessment_follows_the_triage_thresholds(client, auth, enabled_inference, monkeypatch):

@@ -2,12 +2,12 @@ import json
 import re
 import re
 
-from conftest import VALID_METADATA, jpeg_bytes, register
+from conftest import CONSENT, VALID_METADATA, jpeg_bytes, register
 
 
 def upload(client, headers, data=None, filename="lesion.jpg", content=None):
     files = {"file": (filename, content or jpeg_bytes(), "image/jpeg")}
-    return client.post("/predict", headers=headers, files=files, data=data or {})
+    return client.post("/predict", headers=headers, files=files, data={**CONSENT, **(data or {})})
 
 
 def test_health(client):

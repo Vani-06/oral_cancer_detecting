@@ -19,6 +19,8 @@ class RegisterRequest(BaseModel):
     # Open sign-up: the user confirms they are a health professional with
     # the patient's consent to upload photos. Must be true.
     confirms_professional_use: Literal[True]
+    # Required when REGISTRATION_MODE is "invite".
+    invite_code: str | None = Field(default=None, max_length=64)
 
     @field_validator("email")
     @classmethod
@@ -31,6 +33,8 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str
     password: str
+    # Six-digit authenticator code, required once two-factor sign-in is on.
+    mfa_code: str | None = Field(default=None, max_length=12)
 
     @field_validator("email")
     @classmethod
@@ -47,12 +51,70 @@ class UserResponse(BaseModel):
     email: str
     full_name: str
     created_at: datetime
+    mfa_enabled: bool = False
 
 
 class AuthResponse(BaseModel):
     access_token: str
     token_type: str
     user: UserResponse
+
+
+class PublicConfig(BaseModel):
+    allow_registration: bool
+    registration_mode: Literal["open", "invite", "domain"]
+    password_reset_by_email: bool
+
+
+class MfaSetupResponse(BaseModel):
+    secret: str
+    otpauth_uri: str
+
+
+class MfaCode(BaseModel):
+    code: str = Field(min_length=6, max_length=12)
+
+
+class MfaDisable(BaseModel):
+    code: str = Field(min_length=6, max_length=12)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class PasswordResetRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(min_length=16, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class AuditEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    action: str
+    prediction_id: int | None
+    ip: str | None
+    created_at: datetime
+
+
+FollowUpStatus = Literal["needed", "referred", "retake_requested", "closed"]
+FeedbackKind = Literal["cancer_result_wrong", "grade_wrong", "photo_refused_wrongly", "other"]
+
+
+class FollowUpUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: FollowUpStatus
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class FeedbackIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    kind: FeedbackKind
+    actual_diagnosis: str | None = Field(default=None, max_length=255)
+    comment: str | None = Field(default=None, max_length=2000)
 
 
 # --- Prediction schemas ---
@@ -170,6 +232,7 @@ class PredictionHistoryItem(BaseModel):
     dysplasia_grade: DysplasiaGrade | None = None
     assessment: Assessment | None = None
     reference_status: ReferenceStatus | None = None
+    follow_up: FollowUpStatus | None = None
     created_at: str
     image_url: str | None = None
 
@@ -191,3 +254,8 @@ class PredictionDetail(BaseModel):
     is_pending_inference: bool
     metadata: dict | None = None
     model_version: str | None = None
+    follow_up: FollowUpStatus | None = None
+    follow_up_note: str | None = None
+    follow_up_at: str | None = None
+    consent_at: str | None = None
+    feedback_count: int = 0

@@ -26,6 +26,9 @@ from PIL import Image  # noqa: E402
 
 from app.main import app  # noqa: E402
 
+# Every upload must confirm patient consent.
+CONSENT = {"consent_confirmed": "true"}
+
 VALID_METADATA = {
     "age": 52,
     "sex": "female",

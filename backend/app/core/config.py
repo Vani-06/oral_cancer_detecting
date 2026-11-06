@@ -91,6 +91,25 @@ class Settings:
     # Recalibrate whenever the model (MODEL_PATH) changes.
     # Abuse limits for public sign-up: registrations per client address and
     # analyses per account, each per rolling hour.
+    # Who may sign up when ALLOW_REGISTRATION is on: "open" (anyone),
+    # "invite" (one-time codes from backend/scripts/create_invite.py) or
+    # "domain" (emails in ALLOWED_EMAIL_DOMAINS, e.g. a hospital domain).
+    REGISTRATION_MODE: str = os.getenv("REGISTRATION_MODE", "open").lower()
+    ALLOWED_EMAIL_DOMAINS: list[str] = [
+        d.strip().lower() for d in os.getenv("ALLOWED_EMAIL_DOMAINS", "").split(",") if d.strip()
+    ]
+    # Analyses older than this are deleted with their files by
+    # backend/scripts/purge_expired.py; 0 keeps them indefinitely.
+    RETENTION_DAYS: int = int(os.getenv("RETENTION_DAYS", "0"))
+    # Password reset by email. Without SMTP_HOST the link is written to the
+    # server log, for development only.
+    APP_URL: str = os.getenv("APP_URL", "http://localhost:5173").rstrip("/")
+    PASSWORD_RESET_MINUTES: int = int(os.getenv("PASSWORD_RESET_MINUTES", "30"))
+    SMTP_HOST: str | None = os.getenv("SMTP_HOST") or None
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER: str | None = os.getenv("SMTP_USER") or None
+    SMTP_PASSWORD: str | None = os.getenv("SMTP_PASSWORD") or None
+    SMTP_FROM: str = os.getenv("SMTP_FROM", "no-reply@oralsentinel.local")
     REGISTER_MAX_PER_HOUR: int = int(os.getenv("REGISTER_MAX_PER_HOUR", "5"))
     PREDICT_MAX_PER_HOUR: int = int(os.getenv("PREDICT_MAX_PER_HOUR", "30"))
     TRIAGE_NO_CANCER_BELOW: float = float(os.getenv("TRIAGE_NO_CANCER_BELOW", "0.1447"))
@@ -143,6 +162,10 @@ class Settings:
             raise RuntimeError("MAX_FILE_SIZE_MB must be positive")
         if not 0.0 < self.CANCER_THRESHOLD < 1.0:
             raise RuntimeError("CANCER_THRESHOLD must be strictly between 0 and 1")
+        if self.REGISTRATION_MODE not in {"open", "invite", "domain"}:
+            raise RuntimeError("REGISTRATION_MODE must be open, invite or domain")
+        if self.REGISTRATION_MODE == "domain" and not self.ALLOWED_EMAIL_DOMAINS:
+            raise RuntimeError("REGISTRATION_MODE=domain needs ALLOWED_EMAIL_DOMAINS")
         if not 0.0 < self.TRIAGE_NO_CANCER_BELOW < self.TRIAGE_CANCER_AT <= 1.0:
             raise RuntimeError("Need 0 < TRIAGE_NO_CANCER_BELOW < TRIAGE_CANCER_AT <= 1")
         if self.is_production:

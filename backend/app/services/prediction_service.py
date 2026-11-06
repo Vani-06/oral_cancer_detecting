@@ -1,4 +1,5 @@
 import shutil
+from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -7,8 +8,9 @@ from PIL import Image, UnidentifiedImageError
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.config import settings
-from app.models import Prediction, Report, User
+from app.models import Prediction, Report, ResultFeedback, User
 from app.services.inference_service import inference_service
 
 NOT_AN_ORAL_REFERENCE = (
@@ -113,6 +115,7 @@ class PredictionService:
         file: UploadFile,
         metadata: dict | None = None,
         reference_file: UploadFile | None = None,
+        consent_at: datetime | None = None,
     ) -> Prediction:
         filename = self.save_image(file)
         reference = self.save_image(reference_file) if reference_file is not None else None
@@ -133,6 +136,7 @@ class PredictionService:
             image_path=str(self.upload_dir / filename),
             reference_filename=reference,
             metadata_json=metadata,
+            consent_at=consent_at,
         )
         self.db.add(prediction)
         self.db.commit()
@@ -161,6 +165,10 @@ class PredictionService:
             prediction.assessment = result.assessment
             prediction.reference_status = result.reference_status
             prediction.model_version = settings.analysis_version
+            # Referral workflow: anything not cleared needs a follow-up.
+            if result.assessment in ("cancer", "inconclusive"):
+                prediction.follow_up = "needed"
+                prediction.follow_up_at = utcnow()
             prediction.heatmap_path = heatmap_filename
             self.db.commit()
             self.db.refresh(prediction)
@@ -181,6 +189,48 @@ class PredictionService:
             Prediction.user_id == user.id,
         )
         return self.db.scalar(stmt)
+
+    def set_follow_up(self, prediction: Prediction, status: str, note: str | None) -> Prediction:
+        prediction.follow_up = status
+        prediction.follow_up_note = note or None
+        prediction.follow_up_at = utcnow()
+        self.db.commit()
+        self.db.refresh(prediction)
+        return prediction
+
+    def add_feedback(self, prediction: Prediction, user: User, kind: str,
+                     actual_diagnosis: str | None, comment: str | None) -> ResultFeedback:
+        feedback = ResultFeedback(prediction_id=prediction.prediction_id, user_id=user.id, kind=kind,
+                                  actual_diagnosis=actual_diagnosis or None, comment=comment or None)
+        self.db.add(feedback)
+        self.db.commit()
+        return feedback
+
+    def feedback_count(self, prediction: Prediction) -> int:
+        return len(self.db.scalars(
+            select(ResultFeedback.id).where(ResultFeedback.prediction_id == prediction.prediction_id)).all())
+
+    def delete_prediction(self, prediction: Prediction) -> None:
+        """Deletes the analysis, its photos, heatmap and report."""
+        paths = [self.upload_dir / f for f in (prediction.filename, prediction.reference_filename) if f]
+        if prediction.heatmap_path:
+            paths.append(self.upload_dir / "heatmaps" / prediction.heatmap_path)
+        if prediction.report is not None:
+            paths.append(Path(prediction.report.pdf_path))
+        paths.append(Path(settings.REPORT_DIR) / f"{prediction.prediction_id}.pdf")
+        self.db.query(ResultFeedback).filter(ResultFeedback.prediction_id == prediction.prediction_id).delete()
+        self.db.delete(prediction)
+        self.db.commit()
+        for path in paths:
+            path.unlink(missing_ok=True)
+
+    def purge_older_than(self, days: int) -> int:
+        """Retention: deletes analyses older than `days`; returns how many."""
+        cutoff = utcnow() - timedelta(days=days)
+        old = list(self.db.scalars(select(Prediction).where(Prediction.created_at < cutoff)).all())
+        for prediction in old:
+            self.delete_prediction(prediction)
+        return len(old)
 
     def get_report(self, prediction_id: int, user: User) -> Report | None:
         prediction = self.get_prediction(prediction_id, user)

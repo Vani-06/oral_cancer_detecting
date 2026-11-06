@@ -1,22 +1,26 @@
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.core.config import settings
 from app.core.rate_limit import SlidingWindowLimiter
 from app.db import get_db
 from app.dependencies.auth import get_current_user
 from app.models import Prediction, Report, User
 from app.schemas.prediction import (
+    FeedbackIn,
+    FollowUpUpdate,
     PatientMetadata,
     PredictionDetail,
     PredictionHistoryItem,
     PredictionUploadResponse,
 )
+from app.services import audit
 from app.services.prediction_service import PredictionService
 from app.services.report_service import generate_report_pdf
 
@@ -75,8 +79,17 @@ def _private_file(path: Path, media_type: str | None = None) -> FileResponse:
     return FileResponse(str(path), media_type=media_type, headers={"Cache-Control": "private, no-store"})
 
 
-def _record_to_detail(record: Prediction) -> PredictionDetail:
+def _iso(value) -> str | None:
+    return value.isoformat() if value else None
+
+
+def _record_to_detail(record: Prediction, feedback_count: int = 0) -> PredictionDetail:
     return PredictionDetail(
+        follow_up=record.follow_up,
+        follow_up_note=record.follow_up_note,
+        follow_up_at=_iso(record.follow_up_at),
+        consent_at=_iso(record.consent_at),
+        feedback_count=feedback_count,
         prediction_id=record.prediction_id,
         prediction=record.prediction or "Pending",
         dysplasia_grade=record.dysplasia_grade,
@@ -101,6 +114,7 @@ def _record_to_history_item(record: Prediction) -> PredictionHistoryItem:
         dysplasia_grade=record.dysplasia_grade,
         assessment=record.assessment,
         reference_status=record.reference_status,
+        follow_up=record.follow_up,
         created_at=record.created_at.isoformat(),
         image_url=_image_url(record),
     )
@@ -111,10 +125,13 @@ predict_limiter = SlidingWindowLimiter(settings.PREDICT_MAX_PER_HOUR, 3600)
 
 @router.post("/predict", response_model=PredictionUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_prediction(
+    request: Request,
     file: UploadFile = File(...),
     metadata_json: str | None = Form(None),
     # Optional photo of the same site on the patient's healthy opposite side.
     reference_file: UploadFile | None = File(None),
+    # The clinician confirms the patient consented to this analysis.
+    consent_confirmed: bool = Form(False),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> PredictionUploadResponse:
@@ -125,15 +142,19 @@ async def upload_prediction(
             detail="Too many analyses in the last hour. Try again later.",
             headers={"Retry-After": str(retry_after)},
         )
+    if not consent_confirmed:
+        raise HTTPException(status_code=400, detail="Confirm that the patient has consented to this analysis.")
     service = PredictionService(db)
     try:
         metadata = _parse_metadata(metadata_json)
         prediction = service.create_prediction(
-            user=user, file=file, metadata=metadata, reference_file=reference_file
+            user=user, file=file, metadata=metadata, reference_file=reference_file,
+            consent_at=utcnow(),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    audit.record(db, "upload", user_id=user.id, prediction_id=prediction.prediction_id, request=request)
     message = (
         "Image uploaded successfully. Inference is pending model configuration."
         if prediction.is_pending
@@ -170,6 +191,7 @@ def list_predictions(
 @router.get("/predictions/{prediction_id}", response_model=PredictionDetail)
 def get_prediction(
     prediction_id: int,
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -177,12 +199,63 @@ def get_prediction(
     record = service.get_prediction(prediction_id, user)
     if record is None:
         raise HTTPException(status_code=404, detail="Prediction not found")
-    return _record_to_detail(record)
+    audit.record(db, "view", user_id=user.id, prediction_id=prediction_id, request=request)
+    return _record_to_detail(record, service.feedback_count(record))
+
+
+@router.patch("/predictions/{prediction_id}/follow-up", response_model=PredictionDetail)
+def update_follow_up(
+    prediction_id: int,
+    payload: FollowUpUpdate,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service = PredictionService(db)
+    record = service.get_prediction(prediction_id, user)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Prediction not found")
+    service.set_follow_up(record, payload.status, payload.note)
+    audit.record(db, f"follow_up_{payload.status}", user_id=user.id, prediction_id=prediction_id, request=request)
+    return _record_to_detail(record, service.feedback_count(record))
+
+
+@router.post("/predictions/{prediction_id}/feedback", status_code=status.HTTP_201_CREATED)
+def report_wrong_result(
+    prediction_id: int,
+    payload: FeedbackIn,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service = PredictionService(db)
+    record = service.get_prediction(prediction_id, user)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Prediction not found")
+    service.add_feedback(record, user, payload.kind, payload.actual_diagnosis, payload.comment)
+    audit.record(db, "feedback", user_id=user.id, prediction_id=prediction_id, request=request)
+    return {"detail": "Thank you. The report has been recorded for review."}
+
+
+@router.delete("/predictions/{prediction_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_prediction(
+    prediction_id: int,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service = PredictionService(db)
+    record = service.get_prediction(prediction_id, user)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Prediction not found")
+    service.delete_prediction(record)
+    audit.record(db, "delete", user_id=user.id, prediction_id=prediction_id, request=request)
 
 
 @router.get("/predictions/{prediction_id}/image")
 def get_prediction_image(
     prediction_id: int,
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -192,12 +265,14 @@ def get_prediction_image(
     path = settings.UPLOAD_DIR / record.filename if record and record.filename else None
     if path is None or not path.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
+    audit.record(db, "view_photo", user_id=user.id, prediction_id=prediction_id, request=request)
     return _private_file(path)
 
 
 @router.get("/predictions/{prediction_id}/reference-image")
 def get_prediction_reference_image(
     prediction_id: int,
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -205,12 +280,14 @@ def get_prediction_reference_image(
     path = settings.UPLOAD_DIR / record.reference_filename if record and record.reference_filename else None
     if path is None or not path.is_file():
         raise HTTPException(status_code=404, detail="Reference image not found")
+    audit.record(db, "view_reference", user_id=user.id, prediction_id=prediction_id, request=request)
     return _private_file(path)
 
 
 @router.get("/predictions/{prediction_id}/heatmap")
 def get_prediction_heatmap(
     prediction_id: int,
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -218,12 +295,14 @@ def get_prediction_heatmap(
     path = settings.UPLOAD_DIR / "heatmaps" / record.heatmap_path if record and record.heatmap_path else None
     if path is None or not path.is_file():
         raise HTTPException(status_code=404, detail="Heatmap not found")
+    audit.record(db, "view_heatmap", user_id=user.id, prediction_id=prediction_id, request=request)
     return _private_file(path, media_type="image/png")
 
 
 @router.get("/reports/{prediction_id}")
 def download_report(
     prediction_id: int,
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -233,6 +312,7 @@ def download_report(
         raise HTTPException(status_code=404, detail="Prediction not found")
     if record.is_pending:
         raise HTTPException(status_code=400, detail="Report not available until inference completes")
+    audit.record(db, "download_report", user_id=user.id, prediction_id=prediction_id, request=request)
 
     # Reports are derived artifacts: always written to REPORT_DIR (outside the
     # image directory), and regenerated if the stored file is gone --
