@@ -1,8 +1,12 @@
+> **Out of date (11 Nov 2026):** Hugging Face now charges for Docker Spaces. Creating one on a free
+> account fails with "402 Payment Required: hosting Gradio and Docker Spaces on free cpu-basic requires a
+> PRO subscription". This guide only works with a PRO account. For a free API see the alternatives in
+> `docs/deploy-vercel-render.md` and the project notes.
+
 # Free deployment: API on Hugging Face Spaces, web app on Vercel
 
 A no-cost way to give people a working link for demonstrations. Render's free
-plan cannot run the models (512 MB memory against about 1 GB needed);
-Hugging Face's free CPU Spaces give 16 GB.
+plan cannot run the models (512 MB memory against about 1 GB needed).
 
 ## Read first
 
