@@ -221,3 +221,10 @@ def test_browser_may_send_follow_up_and_delete_requests(client, method):
         "Access-Control-Request-Headers": "authorization,content-type"})
     assert resp.status_code == 200
     assert method in resp.headers["access-control-allow-methods"]
+
+
+def test_private_network_preflight_is_refused_unless_switched_on(client):
+    # A public website calling an API on localhost sends this extra preflight header.
+    headers = {"Origin": settings.cors_origins[0], "Access-Control-Request-Method": "POST",
+               "Access-Control-Request-Private-Network": "true"}
+    assert client.options("/login", headers=headers).status_code == 400

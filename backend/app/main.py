@@ -38,6 +38,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
+    allow_private_network=settings.CORS_ALLOW_PRIVATE_NETWORK,
 )
 
 

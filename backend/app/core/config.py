@@ -141,6 +141,12 @@ class Settings:
     # pilot photos.
     REFERENCE_SAME_AS_NORMAL_MAX: float = float(os.getenv("REFERENCE_SAME_AS_NORMAL_MAX", "0.56"))
 
+    # Lets a website on a public address (a listed CORS origin) call this API
+    # when it runs on localhost or a private network, which Chrome otherwise
+    # refuses. Only for running the API on your own machine behind a hosted
+    # web app; leave off on a real server.
+    CORS_ALLOW_PRIVATE_NETWORK: bool = os.getenv("CORS_ALLOW_PRIVATE_NETWORK", "false").lower() == "true"
+
     CORS_ORIGINS_RAW: str = os.getenv(
         "CORS_ORIGINS",
         '["http://localhost:5173", "http://localhost:3000"]',
