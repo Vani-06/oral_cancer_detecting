@@ -108,3 +108,12 @@ def test_production_refuses_to_start_without_models(monkeypatch):
     import pytest
     with pytest.raises(RuntimeError, match="MODEL_PATH"):
         settings.validate()
+
+
+def test_managed_host_database_urls_get_the_psycopg_driver():
+    from app.core.config import normalise_database_url
+
+    assert normalise_database_url("postgres://u:p@h/db") == "postgresql+psycopg://u:p@h/db"
+    assert normalise_database_url("postgresql://u:p@h:5432/db") == "postgresql+psycopg://u:p@h:5432/db"
+    assert normalise_database_url("postgresql+psycopg://u:p@h/db") == "postgresql+psycopg://u:p@h/db"
+    assert normalise_database_url("sqlite:///./x.db") == "sqlite:///./x.db"

@@ -23,6 +23,16 @@ load_dotenv(_BACKEND_DIR / ".env")
 _PLACEHOLDER_SECRETS = {"dev-secret-change-in-production", "change-me"}
 
 
+def normalise_database_url(url: str) -> str:
+    """Managed hosts (Render, Heroku-style) hand out postgres:// or
+    postgresql:// URLs; SQLAlchemy needs the driver named, and this app
+    ships psycopg 3."""
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
+
+
 class Settings:
     BASE_DIR: Path = _BACKEND_DIR
     APP_DIR: Path = BASE_DIR / "app"
@@ -55,7 +65,7 @@ class Settings:
     LOGIN_MAX_FAILURES: int = int(os.getenv("LOGIN_MAX_FAILURES", "5"))
     LOGIN_WINDOW_SECONDS: int = int(os.getenv("LOGIN_WINDOW_SECONDS", "900"))
 
-    DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'oral_cancer.db'}")
+    DATABASE_URL: str = normalise_database_url(os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'oral_cancer.db'}"))
     AUTO_CREATE_TABLES: bool = os.getenv("AUTO_CREATE_TABLES", "true").lower() == "true"
 
     # Optional: path to a trained resnet50_oral_cancer.pt checkpoint (see

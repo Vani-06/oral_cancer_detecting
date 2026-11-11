@@ -1,0 +1,46 @@
+# Render Blueprint: the API (with its three models) and a Postgres database.
+# The web app is deployed separately on Vercel (frontend/vercel.json).
+# Steps and costs: docs/deploy-vercel-render.md.
+#
+# Render has no India region; Singapore is the nearest. Patient data stored
+# here leaves India -- see docs/data-protection-and-security.md.
+databases:
+  - name: oralsentinel-db
+    plan: basic-256mb
+    region: singapore
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: oralsentinel-api
+    runtime: docker
+    region: singapore
+    # 2 GB: the three networks use 0.6 GB after loading and 0.94 GB at peak,
+    # so the 512 MB plans run out of memory.
+    plan: standard
+    dockerfilePath: ./deploy/api.Dockerfile
+    dockerContext: .
+    healthCheckPath: /config/public
+    autoDeploy: false
+    disk:
+      # Uploaded photos and heatmaps survive restarts and deploys.
+      name: oralsentinel-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: oralsentinel-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOW_REGISTRATION
+        value: "true"
+      - key: REGISTRATION_MODE
+        value: open
+      # The Vercel address of the web app, e.g. https://oralsentinel.vercel.app
+      # (no trailing slash). Asked for when the Blueprint is created.
+      - key: CORS_ORIGINS
+        sync: false
+      - key: APP_URL
+        sync: false
