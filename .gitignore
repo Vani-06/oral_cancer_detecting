@@ -25,3 +25,7 @@ backend/*.sqlite3
 ml/data/
 ml/artifacts/*
 !ml/artifacts/model_card.md
+# The three models the deployed API loads (private repository only).
+!ml/artifacts/resnet50_oral_cancer_v7.pt
+!ml/artifacts/oral_photo_gate_v1.pt
+!ml/artifacts/resnet50_dysplasia_grade_v2.pt

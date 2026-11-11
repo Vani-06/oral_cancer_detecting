@@ -28,16 +28,17 @@ Mumbai (`deploy/gcp/`) remains the option that keeps data in India.
 
 ## The branch to deploy
 
-Deploy the branch `deploy/render` of the private repository. It is the main
-work branch plus the three model files (90 to 93 MB each), which the Docker
-build copies into the image. The model files are deliberately not on any
-other branch.
+Deploy the `main` branch of the private repository
+(https://github.com/Vani-06/oral_cancer_detecting). It includes the three
+model files (90 to 93 MB each), which the Docker build copies into the
+image. Keep this repository private: the models were trained on clinic
+photos.
 
 ## 1. API and database on Render
 
 1. Sign in at https://dashboard.render.com with GitHub and give Render access
    to the private repository only.
-2. New > Blueprint > choose the repository and the branch `deploy/render`.
+2. New > Blueprint > choose the repository and the branch `main`.
    Render reads `render.yaml` and lists one web service, one database and one
    disk.
 3. It asks for two values. Enter a placeholder for both for now, for example
@@ -52,8 +53,7 @@ other branch.
 
 1. Sign in at https://vercel.com with GitHub. Add New > Project > import the
    same repository.
-2. Set **Root Directory** to `frontend` and the production branch to
-   `deploy/render` (Settings > Git, if not asked during import).
+2. Set **Root Directory** to `frontend`. The production branch is `main`.
 3. Add one environment variable:
    - `VITE_API_BASE_URL` = the Render address from step 1, without a trailing
      slash, e.g. `https://oralsentinel-api.onrender.com`
@@ -81,5 +81,5 @@ Open the Vercel address, create an account and run one analysis.
 
 ## Updating
 
-Auto-deploy is off on Render. After merging new work into `deploy/render`,
-press Manual Deploy on Render; Vercel redeploys the web app by itself.
+Auto-deploy is off on Render. After pushing new work to `main`, press
+Manual Deploy on Render; Vercel redeploys the web app by itself.
