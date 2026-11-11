@@ -42,7 +42,7 @@ Replace `YOURNAME` with your Hugging Face username:
 
 ```
 hf repos create oralsentinel-models --repo-type model --private
-hf upload YOURNAME/oralsentinel-models C:\Dev\multimodal-dl-oral-cancer-detection\mlrtifacts . --include "resnet50_oral_cancer_v7.pt" --include "oral_photo_gate_v1.pt" --include "resnet50_dysplasia_grade_v2.pt"
+hf upload YOURNAME/oralsentinel-models C:\Dev\multimodal-dl-oral-cancer-detection\ml\artifacts . --include "resnet50_oral_cancer_v7.pt" --include "oral_photo_gate_v1.pt" --include "resnet50_dysplasia_grade_v2.pt"
 ```
 
 Check it is really private: this must print `401` (200 would mean public):
