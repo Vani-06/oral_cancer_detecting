@@ -41,11 +41,19 @@ Hugging Face's free CPU Spaces give 16 GB.
 Replace `YOURNAME` with your Hugging Face username:
 
 ```
-hf repo create oralsentinel-models --repo-type model --private
-hf upload YOURNAME/oralsentinel-models C:\Dev\multimodal-dl-oral-cancer-detection\ml\artifacts\resnet50_oral_cancer_v7.pt resnet50_oral_cancer_v7.pt
-hf upload YOURNAME/oralsentinel-models C:\Dev\multimodal-dl-oral-cancer-detection\ml\artifacts\oral_photo_gate_v1.pt oral_photo_gate_v1.pt
-hf upload YOURNAME/oralsentinel-models C:\Dev\multimodal-dl-oral-cancer-detection\ml\artifacts\resnet50_dysplasia_grade_v2.pt resnet50_dysplasia_grade_v2.pt
+hf repos create oralsentinel-models --repo-type model --private
+hf upload YOURNAME/oralsentinel-models C:\Dev\multimodal-dl-oral-cancer-detection\mlrtifacts . --include "resnet50_oral_cancer_v7.pt" --include "oral_photo_gate_v1.pt" --include "resnet50_dysplasia_grade_v2.pt"
 ```
+
+Check it is really private: this must print `401` (200 would mean public):
+
+```
+curl -s -o NUL -w "%{http_code}" https://huggingface.co/api/models/YOURNAME/oralsentinel-models
+```
+
+If it prints 200, run `hf repos settings YOURNAME/oralsentinel-models --private`
+and check again. (If the `create` line fails, `hf upload` quietly creates a
+**public** repo, so always run this check.)
 
 Then create a **read-only** token for the Space: at
 https://huggingface.co/settings/tokens choose New token > Fine-grained, give
@@ -58,7 +66,7 @@ Build the Space folder from the repository, then push it:
 
 ```
 python C:\Dev\multimodal-dl-oral-cancer-detection\deploy\huggingface\build_space.py --out C:\Dev\oralsentinel-space
-hf repo create oralsentinel-api --repo-type space --space_sdk docker
+hf repos create oralsentinel-api --repo-type space --sdk docker
 cd C:\Dev\oralsentinel-space
 git init -b main
 git add .
