@@ -4,6 +4,8 @@ The web app is a static site, which suits Vercel. The API loads three neural
 networks and needs a database and a disk, which suits Render. Google Cloud in
 Mumbai (`deploy/gcp/`) remains the option that keeps data in India.
 
+A no-cost alternative for demonstrations: `docs/deploy-huggingface.md`.
+
 ## Before you start
 
 - **Render has no India region.** The blueprint uses Singapore, so photos and
