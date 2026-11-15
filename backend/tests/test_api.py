@@ -1,6 +1,5 @@
 import json
 import re
-import re
 
 from conftest import CONSENT, VALID_METADATA, jpeg_bytes, register
 
@@ -17,7 +16,8 @@ def test_health(client):
 def test_register_login_me(client):
     email = "flow@clinic.org"
     reg = client.post(
-        "/register", json={"email": email, "password": "password123", "full_name": "Flow", "confirms_professional_use": True}
+        "/register",
+        json={"email": email, "password": "password123", "full_name": "Flow", "confirms_professional_use": True},
     )
     assert reg.status_code == 201
     login = client.post("/login", json={"email": email, "password": "password123"})
@@ -28,7 +28,10 @@ def test_register_login_me(client):
 
 
 def test_wrong_password_rejected(client):
-    client.post("/register", json={"email": "pw@clinic.org", "password": "password123", "full_name": "P", "confirms_professional_use": True})
+    client.post(
+        "/register",
+        json={"email": "pw@clinic.org", "password": "password123", "full_name": "P", "confirms_professional_use": True},
+    )
     assert client.post("/login", json={"email": "pw@clinic.org", "password": "nope-nope"}).status_code == 401
 
 
@@ -89,8 +92,14 @@ def test_metadata_is_validated_at_the_api_boundary(client, auth):
 def test_follow_ups_to_a_no_answer_are_dropped(client, auth):
     # The form hides these when the habit is "No" but can still send what
     # was typed before; they must not be stored or printed on the report.
-    meta = {**VALID_METADATA, "tobacco_use": False, "tobacco_type": "smoked", "tobacco_years": 15,
-            "betel_quid_use": False, "betel_quid_years": 4}
+    meta = {
+        **VALID_METADATA,
+        "tobacco_use": False,
+        "tobacco_type": "smoked",
+        "tobacco_years": 15,
+        "betel_quid_use": False,
+        "betel_quid_years": 4,
+    }
     resp = upload(client, auth, data={"metadata_json": json.dumps(meta)})
     assert resp.status_code == 201, resp.text
     stored = client.get(f"/predictions/{resp.json()['prediction_id']}", headers=auth).json()["metadata"]

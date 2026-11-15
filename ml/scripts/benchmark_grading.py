@@ -101,8 +101,13 @@ def case_details(xlsx: Path, case_ids: list[int]) -> tuple[np.ndarray, list[str]
 def photo_features(paths_by_case: dict[int, list[Path]], case_ids: list[int]) -> np.ndarray:
     model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2).eval()
     model.fc = torch.nn.Identity()
-    tf = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor(),
-                             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+    tf = transforms.Compose(
+        [
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        ]
+    )
     out = []
     for case in case_ids:
         ims = []
@@ -134,8 +139,12 @@ def score(X, y, c, seeds=range(10)):
         accs.append(np.mean(p == y))
         baccs.append(np.mean([np.mean(p[y == k] == k) for k in range(3)]))
         kappas.append(cohen_kappa_score(y, p, weights="quadratic"))
-    return {"accuracy": float(np.mean(accs)), "balanced_accuracy": float(np.mean(baccs)),
-            "quadratic_kappa": float(np.mean(kappas)), "kappa_sd_over_seeds": float(np.std(kappas))}
+    return {
+        "accuracy": float(np.mean(accs)),
+        "balanced_accuracy": float(np.mean(baccs)),
+        "quadratic_kappa": float(np.mean(kappas)),
+        "kappa_sd_over_seeds": float(np.std(kappas)),
+    }
 
 
 def main():
@@ -152,8 +161,14 @@ def main():
 
     details, names = case_details(xlsx, case_ids)
     photo = photo_features(paths_by_case, case_ids)
-    np.savez(ML_DIR / "artifacts" / "grading_benchmark_features.npz", details=details, photo=photo, y=y,
-             case_ids=np.array(case_ids), names=np.array(names))
+    np.savez(
+        ML_DIR / "artifacts" / "grading_benchmark_features.npz",
+        details=details,
+        photo=photo,
+        y=y,
+        case_ids=np.array(case_ids),
+        names=np.array(names),
+    )
     sets = {"details only": details, "photo only": photo, "photo + details": np.hstack([photo, details])}
 
     results = {"majority_baseline_accuracy": float(np.bincount(y).max() / len(y))}
@@ -163,8 +178,11 @@ def main():
         for c in [0.01, 0.1, 1.0]:
             r = score(X, y, c)
             results[f"{name} C={c}"] = r
-            print(f"{name:16s} C={c:<5} acc {r['accuracy']:.3f}  balanced {r['balanced_accuracy']:.3f}  "
-                  f"kappa {r['quadratic_kappa']:.3f} (+/-{r['kappa_sd_over_seeds']:.3f})", flush=True)
+            print(
+                f"{name:16s} C={c:<5} acc {r['accuracy']:.3f}  balanced {r['balanced_accuracy']:.3f}  "
+                f"kappa {r['quadratic_kappa']:.3f} (+/-{r['kappa_sd_over_seeds']:.3f})",
+                flush=True,
+            )
             if best is None or r["quadratic_kappa"] > best[2]["quadratic_kappa"]:
                 best = (name, c, r)
 
@@ -172,16 +190,23 @@ def main():
     rng = np.random.default_rng(0)
     null = [score(sets[name], rng.permutation(y), c, seeds=range(3))["quadratic_kappa"] for _ in range(30)]
     results["best"] = {"setup": name, "C": c, **r}
-    results["shuffled_grades_kappa"] = {"mean": float(np.mean(null)), "max": float(np.max(null)),
-                                        "share_at_or_above_best": float(np.mean(np.array(null) >= r["quadratic_kappa"]))}
-    print(f"\nbest: {name} C={c} kappa {r['quadratic_kappa']:.3f}; shuffled grades: mean {np.mean(null):.3f}, "
-          f"max {np.max(null):.3f}, share >= best {results['shuffled_grades_kappa']['share_at_or_above_best']:.2f}")
+    results["shuffled_grades_kappa"] = {
+        "mean": float(np.mean(null)),
+        "max": float(np.max(null)),
+        "share_at_or_above_best": float(np.mean(np.array(null) >= r["quadratic_kappa"])),
+    }
+    print(
+        f"\nbest: {name} C={c} kappa {r['quadratic_kappa']:.3f}; shuffled grades: mean {np.mean(null):.3f}, "
+        f"max {np.max(null):.3f}, share >= best {results['shuffled_grades_kappa']['share_at_or_above_best']:.2f}"
+    )
 
     if "details" in name:
         coef = make_model(c).fit(sets["details only"], y)[-1].coef_
         order = np.argsort(-np.abs(coef[2] - coef[0]))[:10]
-        print("details pushing towards severe (+) vs mild (-):",
-              [(names[i], round(float(coef[2][i] - coef[0][i]), 2)) for i in order])
+        print(
+            "details pushing towards severe (+) vs mild (-):",
+            [(names[i], round(float(coef[2][i] - coef[0][i]), 2)) for i in order],
+        )
     (ML_DIR / "artifacts" / "grading_benchmark.json").write_text(json.dumps(results, indent=2))
 
 

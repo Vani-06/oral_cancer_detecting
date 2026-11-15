@@ -28,9 +28,9 @@ import time
 from pathlib import Path
 
 import torch
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 from torch import nn, optim
 from torch.utils.data import DataLoader, WeightedRandomSampler
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 from torchvision import datasets, transforms
 from torchvision.models import ResNet50_Weights, resnet50
 
@@ -108,8 +108,11 @@ def _shortcut_edits(image):
     if random.random() < 0.15:  # glove / instrument at an edge
         x0, y0 = random.uniform(0.6, 0.85) * w, random.uniform(-0.1, 0.5) * h
         shade = random.randint(200, 245)
-        draw.rounded_rectangle((x0, y0, w * 1.1, y0 + h * random.uniform(0.2, 0.5)), radius=int(w * 0.05),
-                               fill=(shade, shade, min(255, shade + 8)))
+        draw.rounded_rectangle(
+            (x0, y0, w * 1.1, y0 + h * random.uniform(0.2, 0.5)),
+            radius=int(w * 0.05),
+            fill=(shade, shade, min(255, shade + 8)),
+        )
     if random.random() < 0.2:
         image = image.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.5, 3) * max(1, w / 400)))
     if random.random() < 0.2:
@@ -126,7 +129,9 @@ def _shortcut_edits(image):
     if random.random() < 0.2:
         r, g, b = image.split()
         k = random.uniform(0.88, 1.12)
-        image = Image.merge("RGB", (r.point(lambda v: min(255, int(v * k))), g, b.point(lambda v: min(255, int(v / k)))))
+        image = Image.merge(
+            "RGB", (r.point(lambda v: min(255, int(v * k))), g, b.point(lambda v: min(255, int(v / k))))
+        )
     if random.random() < 0.3:
         image = image.rotate(random.choice([90, 180, 270]), expand=True)
     return image
@@ -170,7 +175,7 @@ class ZoomHealthy(datasets.ImageFolder):
         if target == self.healthy_idx:
             zoom, tf = random.random() < self.p, self.zoom
         else:
-            # --zoom-all (review item 21): close-ups of cancers too, so that
+            # --zoom-all: close-ups of cancers too, so that
             # "zoomed in" stops predicting "healthy". Milder crops keep the
             # lesion in frame most of the time.
             zoom, tf = self.zoom_cancer and random.random() < self.p, self.zoom_lesion
@@ -209,19 +214,26 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument(
-        "--train-dir", type=Path, default=DATA_DIR / "train",
+        "--train-dir",
+        type=Path,
+        default=DATA_DIR / "train",
         help="ImageFolder-style directory to train on (default: Kaggle-only split)",
     )
     parser.add_argument(
-        "--val-dir", type=Path, default=DATA_DIR / "val",
+        "--val-dir",
+        type=Path,
+        default=DATA_DIR / "val",
         help="ImageFolder-style directory to validate on (default: Kaggle-only split)",
     )
     parser.add_argument(
-        "--checkpoint-name", default="resnet50_oral_cancer.pt",
+        "--checkpoint-name",
+        default="resnet50_oral_cancer.pt",
         help="Output filename under ml/artifacts/ (default overwrites the base checkpoint)",
     )
     parser.add_argument(
-        "--client-oversample-factor", type=float, default=1.0,
+        "--client-oversample-factor",
+        type=float,
+        default=1.0,
         help=(
             "Sampling weight multiplier for training images whose filename "
             "starts with 'client_' (see prepare_combined_training.py). At "
@@ -233,19 +245,24 @@ def main():
         ),
     )
     parser.add_argument(
-        "--zoom-all", action="store_true",
+        "--zoom-all",
+        action="store_true",
         help="Also apply close-up crops (35-80%% of the image) to cancer photos.",
     )
     parser.add_argument(
-        "--zoom-healthy", type=float, default=0.0,
+        "--zoom-healthy",
+        type=float,
+        default=0.0,
         help="Probability of replacing a healthy training image with a close-up crop (see ZoomHealthy).",
     )
     parser.add_argument(
-        "--shortcut-edits", action="store_true",
+        "--shortcut-edits",
+        action="store_true",
         help="Also apply diagnosis-preserving edits to both classes (see _shortcut_edits).",
     )
     parser.add_argument(
-        "--unfreeze-layer3", action="store_true",
+        "--unfreeze-layer3",
+        action="store_true",
         help="Also fine-tune layer3, not just layer4+fc -- see build_model().",
     )
     args = parser.parse_args()
@@ -254,8 +271,9 @@ def main():
     train_tf, eval_tf = build_transforms()
 
     if args.zoom_healthy > 0:
-        train_ds = ZoomHealthy(args.train_dir, p=args.zoom_healthy, shortcut_edits=args.shortcut_edits,
-                               zoom_cancer=args.zoom_all)
+        train_ds = ZoomHealthy(
+            args.train_dir, p=args.zoom_healthy, shortcut_edits=args.shortcut_edits, zoom_cancer=args.zoom_all
+        )
     else:
         train_ds = datasets.ImageFolder(args.train_dir, transform=train_tf)
     val_ds = datasets.ImageFolder(args.val_dir, transform=eval_tf)
@@ -271,10 +289,7 @@ def main():
 
     if args.client_oversample_factor != 1.0:
         sample_paths = [s[0] for s in train_ds.samples]
-        weights = [
-            args.client_oversample_factor if Path(p).name.startswith("client_") else 1.0
-            for p in sample_paths
-        ]
+        weights = [args.client_oversample_factor if Path(p).name.startswith("client_") else 1.0 for p in sample_paths]
         n_client = sum(1 for p in sample_paths if Path(p).name.startswith("client_"))
         print(
             f"Client oversampling active: factor={args.client_oversample_factor}, "
@@ -290,9 +305,7 @@ def main():
 
     model = build_model(unfreeze_layer3=args.unfreeze_layer3).to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(
-        [p for p in model.parameters() if p.requires_grad], lr=args.lr
-    )
+    optimizer = optim.Adam([p for p in model.parameters() if p.requires_grad], lr=args.lr)
 
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     log_rows = []
@@ -311,8 +324,14 @@ def main():
             f"val loss {val_loss:.4f} acc {val_acc:.3f} | {elapsed:.1f}s"
         )
         log_rows.append(
-            {"epoch": epoch, "train_loss": train_loss, "train_acc": train_acc,
-             "val_loss": val_loss, "val_acc": val_acc, "seconds": round(elapsed, 1)}
+            {
+                "epoch": epoch,
+                "train_loss": train_loss,
+                "train_acc": train_acc,
+                "val_loss": val_loss,
+                "val_acc": val_acc,
+                "seconds": round(elapsed, 1),
+            }
         )
 
         if val_acc > best_val_acc:

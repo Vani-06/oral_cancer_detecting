@@ -21,8 +21,13 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from sklearn.metrics import (average_precision_score, brier_score_loss, cohen_kappa_score,
-                             matthews_corrcoef, roc_auc_score)
+from sklearn.metrics import (
+    average_precision_score,
+    brier_score_loss,
+    cohen_kappa_score,
+    matthews_corrcoef,
+    roc_auc_score,
+)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import stress_test as st  # noqa: E402
@@ -37,7 +42,7 @@ LO, HI = 0, 6  # votes out of 9: the thresholds chosen on validation in referenc
 def ece(y, p, bins=10):
     edges = np.linspace(0, 1, bins + 1)
     total = 0.0
-    for a, b in zip(edges[:-1], edges[1:]):
+    for a, b in zip(edges[:-1], edges[1:], strict=False):
         m = (p >= a) & (p < b if b < 1 else p <= b)
         if m.any():
             total += m.mean() * abs(p[m].mean() - y[m].mean())
@@ -51,11 +56,19 @@ def binary(y, p):
     sens, spec = tp / max(tp + fn, 1), tn / max(tn + fp, 1)
     prec, npv = tp / max(tp + fp, 1), tn / max(tn + fn, 1)
     return {
-        "accuracy": (tp + tn) / len(y), "sensitivity": sens, "specificity": spec,
-        "precision_ppv": prec, "npv": npv, "f1": 2 * prec * sens / max(prec + sens, 1e-9),
-        "balanced_accuracy": (sens + spec) / 2, "mcc": matthews_corrcoef(y, pred),
-        "cohen_kappa": cohen_kappa_score(y, pred), "roc_auc": roc_auc_score(y, p),
-        "pr_auc": average_precision_score(y, p), "brier": brier_score_loss(y, p), "ece": ece(y, p),
+        "accuracy": (tp + tn) / len(y),
+        "sensitivity": sens,
+        "specificity": spec,
+        "precision_ppv": prec,
+        "npv": npv,
+        "f1": 2 * prec * sens / max(prec + sens, 1e-9),
+        "balanced_accuracy": (sens + spec) / 2,
+        "mcc": matthews_corrcoef(y, pred),
+        "cohen_kappa": cohen_kappa_score(y, pred),
+        "roc_auc": roc_auc_score(y, p),
+        "pr_auc": average_precision_score(y, p),
+        "brier": brier_score_loss(y, p),
+        "ece": ece(y, p),
     }
 
 
@@ -63,10 +76,13 @@ def three_way(y, votes):
     d = np.where(votes >= HI, 1, np.where(votes <= LO, 0, -1))
     dec = d >= 0
     return {
-        "coverage": dec.mean(), "inconclusive": 1 - dec.mean(),
+        "coverage": dec.mean(),
+        "inconclusive": 1 - dec.mean(),
         "decided_accuracy": (d[dec] == y[dec]).mean(),
-        "cancers_called_no_cancer": (d[y] == 0).mean(), "cancers_called_cancer": (d[y] == 1).mean(),
-        "noncancer_called_cancer": (d[~y] == 1).mean(), "noncancer_called_no_cancer": (d[~y] == 0).mean(),
+        "cancers_called_no_cancer": (d[y] == 0).mean(),
+        "cancers_called_cancer": (d[y] == 1).mean(),
+        "noncancer_called_cancer": (d[~y] == 1).mean(),
+        "noncancer_called_no_cancer": (d[~y] == 0).mean(),
     }
 
 
@@ -80,8 +96,10 @@ def with_ci(fn, y, *arrays, n=2000, seed=0):
             continue
         for k, v in fn(y[idx], *[a[idx] for a in arrays]).items():
             boots[k].append(v)
-    return {k: {"value": float(v), "ci95": [float(np.percentile(boots[k], 2.5)), float(np.percentile(boots[k], 97.5))]}
-            for k, v in point.items()}
+    return {
+        k: {"value": float(v), "ci95": [float(np.percentile(boots[k], 2.5)), float(np.percentile(boots[k], 97.5))]}
+        for k, v in point.items()
+    }
 
 
 def labelled(root):
@@ -95,18 +113,27 @@ def main():
     args = ap.parse_args()
     model = st.load_model(Path(args.checkpoint))
     out = {}
-    for name, root in [("validation", DATA / "case_split_fixed" / "val"), ("test", DATA / "kaggle_split_fixed" / "test")]:
+    for name, root in [
+        ("validation", DATA / "case_split_fixed" / "val"),
+        ("test", DATA / "kaggle_split_fixed" / "test"),
+    ]:
         ims, y = labelled(root)
         p = st.run(*model, ims)[0]
         votes = np.sum([st.run(*model, [e(im) for im in ims])[0] >= 0.5 for e in STABILITY_EDITS], 0)
-        out[name] = {"photos": int(len(y)), "cancers": int(y.sum()),
-                     "binary": with_ci(binary, y, p), "three_way": with_ci(three_way, y, votes)}
+        out[name] = {
+            "photos": int(len(y)),
+            "cancers": int(y.sum()),
+            "binary": with_ci(binary, y, p),
+            "three_way": with_ci(three_way, y, votes),
+        }
         print(f"\n== {name} ({len(y)} photos, {y.sum()} cancers)")
         for group in ("binary", "three_way"):
             for k, v in out[name][group].items():
                 print(f"  {group:9s} {k:28s} {v['value']:.3f}  [{v['ci95'][0]:.3f}, {v['ci95'][1]:.3f}]")
-    hold = [st.open_rgb(DATA / "case_split" / "holdout" / r["filename"])
-            for r in csv.DictReader(open(DATA / "case_split" / "holdout" / "manifest.csv"))]
+    hold = [
+        st.open_rgb(DATA / "case_split" / "holdout" / r["filename"])
+        for r in csv.DictReader(open(DATA / "case_split" / "holdout" / "manifest.csv"))
+    ]
     ph = st.run(*model, hold)[0]
     out["client_holdout_specificity"] = float((ph < 0.5).mean())
     print(f"\nclient held-out dysplasia (39 photos, no cancer): specificity {out['client_holdout_specificity']:.3f}")

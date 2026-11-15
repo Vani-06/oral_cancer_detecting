@@ -71,7 +71,12 @@ def register(client: TestClient) -> dict[str, str]:
     email = f"user-{uuid.uuid4().hex[:10]}@clinic.org"
     resp = client.post(
         "/register",
-        json={"email": email, "password": "password123", "full_name": "Test Clinician", "confirms_professional_use": True},
+        json={
+            "email": email,
+            "password": "password123",
+            "full_name": "Test Clinician",
+            "confirms_professional_use": True,
+        },
     )
     assert resp.status_code == 201, resp.text
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}

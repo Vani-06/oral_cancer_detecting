@@ -68,9 +68,9 @@ def generate_heatmap(model: torch.nn.Module, image: Image.Image, checkpoint: dic
         model.zero_grad()
         output[0, predicted_class].backward()
 
-        acts = activations["value"][0]       # (C, H, W)
-        grads = gradients["value"][0]         # (C, H, W)
-        weights = grads.mean(dim=(1, 2))      # (C,) -- global average pool of gradients
+        acts = activations["value"][0]  # (C, H, W)
+        grads = gradients["value"][0]  # (C, H, W)
+        weights = grads.mean(dim=(1, 2))  # (C,) -- global average pool of gradients
 
         cam = torch.relu((weights[:, None, None] * acts).sum(dim=0))
         cam = cam / (cam.max() + 1e-8)
@@ -89,8 +89,8 @@ def overlay_heatmap(image: Image.Image, heatmap: Image.Image, alpha: float = 0.4
     heatmaps (fixtures.ts) so the transition from mock to real is seamless."""
     heat_arr = np.array(heatmap, dtype=np.float32) / 255.0
     colored = np.zeros((*heat_arr.shape, 4), dtype=np.uint8)
-    colored[..., 0] = 255                              # red channel full
-    colored[..., 1] = np.uint8(255 * (1 - heat_arr))   # less green where hotter -> more red/orange
+    colored[..., 0] = 255  # red channel full
+    colored[..., 1] = np.uint8(255 * (1 - heat_arr))  # less green where hotter -> more red/orange
     colored[..., 3] = np.uint8(255 * alpha * heat_arr)  # transparent where cold
 
     overlay = Image.fromarray(colored, mode="RGBA")

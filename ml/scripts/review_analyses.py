@@ -1,6 +1,7 @@
 """
-Analyses requested by the external review (items 1, 2, 8, 9, 24, 25, 27,
-29, 32 and the untouched final test set for item 17).
+Supporting analyses: prevalence-adjusted predictive values, consensus
+ablation, simple baseline, per-class triage tables, temperature scaling,
+specificity by type of non-cancer, and the untouched final test set.
 
 Calibration/selection: validation split only (case_split_fixed/val).
 Reported: corrected Kaggle test (seen during development, so partly tuned),
@@ -70,23 +71,37 @@ def at_prevalence(sens, spec):
         ppv = sens * prev / (sens * prev + (1 - spec) * (1 - prev))
         npv = spec * (1 - prev) / (spec * (1 - prev) + (1 - sens) * prev)
         flagged = 1000 * (sens * prev + (1 - spec) * (1 - prev))
-        out[f"{prev:.0%}"] = {"ppv": ppv, "npv": npv, "flagged_per_1000": flagged,
-                              "true_cancers_among_flagged_per_1000": 1000 * sens * prev,
-                              "missed_cancers_per_1000": 1000 * (1 - sens) * prev}
+        out[f"{prev:.0%}"] = {
+            "ppv": ppv,
+            "npv": npv,
+            "flagged_per_1000": flagged,
+            "true_cancers_among_flagged_per_1000": 1000 * sens * prev,
+            "missed_cancers_per_1000": 1000 * (1 - sens) * prev,
+        }
     return out
 
 
 def ece(p, y, bins=10):
     edges = np.linspace(0, 1, bins + 1)
-    return float(sum(((p >= a) & (p < b if b < 1 else p <= b)).mean() *
-                     abs(p[(p >= a) & (p < b if b < 1 else p <= b)].mean() - y[(p >= a) & (p < b if b < 1 else p <= b)].mean())
-                     for a, b in zip(edges[:-1], edges[1:]) if ((p >= a) & (p < b if b < 1 else p <= b)).any()))
+    return float(
+        sum(
+            ((p >= a) & (p < b if b < 1 else p <= b)).mean()
+            * abs(p[(p >= a) & (p < b if b < 1 else p <= b)].mean() - y[(p >= a) & (p < b if b < 1 else p <= b)].mean())
+            for a, b in zip(edges[:-1], edges[1:], strict=False)
+            if ((p >= a) & (p < b if b < 1 else p <= b)).any()
+        )
+    )
 
 
 def temperature(p_val, y_val):
     logit = np.log(np.clip(p_val, 1e-6, 1 - 1e-6) / np.clip(1 - p_val, 1e-6, 1))
-    best = min(np.linspace(0.3, 5, 200), key=lambda t: -np.mean(
-        y_val * np.log(1 / (1 + np.exp(-logit / t)) + 1e-9) + (1 - y_val) * np.log(1 - 1 / (1 + np.exp(-logit / t)) + 1e-9)))
+    best = min(
+        np.linspace(0.3, 5, 200),
+        key=lambda t: -np.mean(
+            y_val * np.log(1 / (1 + np.exp(-logit / t)) + 1e-9)
+            + (1 - y_val) * np.log(1 - 1 / (1 + np.exp(-logit / t)) + 1e-9)
+        ),
+    )
     return float(best)
 
 
@@ -99,9 +114,14 @@ def apply_t(p, t):
 def imagenet_features(images):
     m = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2).eval()
     m.fc = torch.nn.Identity()
-    tf = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor(),
-                             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
-    out = [m(torch.stack([tf(im) for im in images[i:i + 32]])) for i in range(0, len(images), 32)]
+    tf = transforms.Compose(
+        [
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        ]
+    )
+    out = [m(torch.stack([tf(im) for im in images[i : i + 32]])) for i in range(0, len(images), 32)]
     f = torch.cat(out).numpy()
     return f / np.linalg.norm(f, axis=1, keepdims=True)
 
@@ -114,12 +134,14 @@ def grade_none_on_cancer_calls(images, cancer_call):
     m.fc = torch.nn.Linear(2048, len(ck["class_to_idx"]))
     m.load_state_dict(ck["state_dict"])
     m.eval()
-    tf = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor(), transforms.Normalize(ck["mean"], ck["std"])])
+    tf = transforms.Compose(
+        [transforms.Resize((224, 224)), transforms.ToTensor(), transforms.Normalize(ck["mean"], ck["std"])]
+    )
     none = ck["class_to_idx"]["no_dysplasia"]
-    sel = [im for im, c in zip(images, cancer_call) if c]
+    sel = [im for im, c in zip(images, cancer_call, strict=False) if c]
     if not sel:
         return cp(0, 0)
-    pred = torch.cat([m(torch.stack([tf(im) for im in sel[i:i + 32]])).argmax(1) for i in range(0, len(sel), 32)])
+    pred = torch.cat([m(torch.stack([tf(im) for im in sel[i : i + 32]])).argmax(1) for i in range(0, len(sel), 32)])
     return cp(int((pred == none).sum()), len(sel))
 
 
@@ -135,49 +157,69 @@ def main():
     vs, vc = scores(model, val_im)
     ts, tc = scores(model, test_im)
 
-    # Item 8: ablation -- same conformal calibration on single-pass vs consensus score.
+    # Ablation: the same conformal calibration on a single-pass vs consensus score.
     thr = {}
     for name, v, t in [("single_pass", vs, ts), ("consensus_9_edits", vc, tc)]:
         lo, hi = lam_lo_crc(v[val_y], 0.05), lam_hi_for(v[~val_y], 0.10)
         thr[name] = (lo, hi)
         o = three_way(t, lo, hi)
-        out.setdefault("ablation_test", {})[name] = {"lam_lo": lo, "lam_hi": hi, "confusion": confusion(o, test_y),
-                                                      "validation_noncancer_called_cancer": float((v[~val_y] >= hi).mean())}
-    # Item 27/24: full per-class table for the model in use (consensus) on test.
+        out.setdefault("ablation_test", {})[name] = {
+            "lam_lo": lo,
+            "lam_hi": hi,
+            "confusion": confusion(o, test_y),
+            "validation_noncancer_called_cancer": float((v[~val_y] >= hi).mean()),
+        }
+    # Full per-class table for the model in use (consensus) on test.
     lo, hi = thr["consensus_9_edits"]
     test_out = three_way(tc, lo, hi)
     out["triage_test_confusion"] = confusion(test_out, test_y)
 
-    # Items 1/2: prevalence-adjusted figures.
+    # Predictive values at realistic prevalence.
     single_sens, single_spec = float((ts[test_y] >= 0.5).mean()), float((ts[~test_y] < 0.5).mean())
     refer = test_out != "no_cancer"
     refer_sens, refer_spec = float(refer[test_y].mean()), float((~refer[~test_y]).mean())
-    out["prevalence"] = {"single_answer": at_prevalence(single_sens, single_spec),
-                         "triage_refer_if_cancer_or_inconclusive": at_prevalence(refer_sens, refer_spec)}
+    out["prevalence"] = {
+        "single_answer": at_prevalence(single_sens, single_spec),
+        "triage_refer_if_cancer_or_inconclusive": at_prevalence(refer_sens, refer_spec),
+    }
 
-    # Item 9: simple baseline on the identical split.
+    # Simple baseline on the identical split.
     tr_paths, tr_im, tr_y = labelled(DATA / "case_split_fixed" / "train")
     clf = LogisticRegression(C=1.0, max_iter=3000).fit(imagenet_features(tr_im), tr_y)
     pb = clf.predict_proba(imagenet_features(test_im))[:, 1]
     out["baseline_frozen_imagenet_lr_test"] = {
-        "auc": float(roc_auc_score(test_y, pb)), "sensitivity": float((pb[test_y] >= 0.5).mean()),
-        "specificity": float((pb[~test_y] < 0.5).mean())}
-    out["round7_test"] = {"auc": float(roc_auc_score(test_y, ts)), "sensitivity": single_sens, "specificity": single_spec}
+        "auc": float(roc_auc_score(test_y, pb)),
+        "sensitivity": float((pb[test_y] >= 0.5).mean()),
+        "specificity": float((pb[~test_y] < 0.5).mean()),
+    }
+    out["round7_test"] = {
+        "auc": float(roc_auc_score(test_y, ts)),
+        "sensitivity": single_sens,
+        "specificity": single_spec,
+    }
 
-    # Item 29: temperature scaling fitted on validation.
+    # Temperature scaling fitted on validation.
     t = temperature(vs, val_y.astype(float))
-    out["calibration"] = {"temperature": t, "test_ece_before": ece(ts, test_y), "test_ece_after": ece(apply_t(ts, t), test_y),
-                          "test_brier_before": float(np.mean((ts - test_y) ** 2)),
-                          "test_brier_after": float(np.mean((apply_t(ts, t) - test_y) ** 2))}
+    out["calibration"] = {
+        "temperature": t,
+        "test_ece_before": ece(ts, test_y),
+        "test_ece_after": ece(apply_t(ts, t), test_y),
+        "test_brier_before": float(np.mean((ts - test_y) ** 2)),
+        "test_brier_after": float(np.mean((apply_t(ts, t) - test_y) ** 2)),
+    }
 
-    # Item 32: specificity by type of non-cancer (single answer and triage).
+    # Specificity by type of non-cancer (single answer and triage).
     benign_mask = np.array([p.name.startswith("relabelled_") for p in test_paths])
-    hold = [st.open_rgb(DATA / "case_split" / "holdout" / r["filename"])
-            for r in csv.DictReader(open(DATA / "case_split" / "holdout" / "manifest.csv"))]
+    hold = [
+        st.open_rgb(DATA / "case_split" / "holdout" / r["filename"])
+        for r in csv.DictReader(open(DATA / "case_split" / "holdout" / "manifest.csv"))
+    ]
     ext = DATA / "external" / "olp_synthesis" / "extracted" / "data"
     groups = {
-        "kaggle_normal_or_other": [im for im, y, b in zip(test_im, test_y, benign_mask) if not y and not b],
-        "kaggle_benign_lesions": [im for im, b in zip(test_im, benign_mask) if b],
+        "kaggle_normal_or_other": [
+            im for im, y, b in zip(test_im, test_y, benign_mask, strict=False) if not y and not b
+        ],
+        "kaggle_benign_lesions": [im for im, b in zip(test_im, benign_mask, strict=False) if b],
         "client_dysplasia_heldout": hold,
         "external_healthy_cheek": [st.open_rgb(p) for p in sorted((ext / "negative").glob("*"))],
         "external_lichen_planus": [st.open_rgb(p) for p in sorted((ext / "lesion_img").glob("*"))],
@@ -190,9 +232,10 @@ def main():
             "single_answer_flagged": cp(int((s1 >= 0.5).sum()), len(ims)),
             "triage_cancer": cp(int((o == "cancer").sum()), len(ims)),
             "triage_inconclusive": cp(int((o == "inconclusive").sum()), len(ims)),
-            "triage_cleared": cp(int((o == "no_cancer").sum()), len(ims))}
+            "triage_cleared": cp(int((o == "no_cancer").sum()), len(ims)),
+        }
 
-    # Item 25: the grade override.
+    # How often the grade override fires.
     out["grade_rule_fires_on_test_cancer_calls"] = grade_none_on_cancer_calls(test_im, ts >= 0.5)
 
     if args.final:
@@ -200,11 +243,15 @@ def main():
         fs, fc = scores(model, f_im)
         fo = three_way(fc, lo, hi)
         out["untouched_final_test"] = {
-            "photos": int(len(f_y)), "cancers": int(f_y.sum()),
-            "single_answer": {"auc": float(roc_auc_score(f_y, fs)),
-                              "sensitivity": cp(int((fs[f_y] >= 0.5).sum()), int(f_y.sum())),
-                              "specificity": cp(int((fs[~f_y] < 0.5).sum()), int((~f_y).sum()))},
-            "triage_confusion": confusion(fo, f_y)}
+            "photos": int(len(f_y)),
+            "cancers": int(f_y.sum()),
+            "single_answer": {
+                "auc": float(roc_auc_score(f_y, fs)),
+                "sensitivity": cp(int((fs[f_y] >= 0.5).sum()), int(f_y.sum())),
+                "specificity": cp(int((fs[~f_y] < 0.5).sum()), int((~f_y).sum())),
+            },
+            "triage_confusion": confusion(fo, f_y),
+        }
 
     path = ML_DIR / "artifacts" / ("review_analyses_final.json" if args.final else "review_analyses.json")
     path.write_text(json.dumps(out, indent=2))

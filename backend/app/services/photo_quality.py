@@ -3,8 +3,8 @@ Basic photo-quality check, run before the analysis.
 
 The photo check (PhotoGate) asks "is this an oral photo?" by content, so it
 accepts oral photos that are far too dark, washed out or low in detail to
-analyse (review item 23: it accepted 99% of very dark and 67% of tiny
-upscaled test photos). These three measures catch those. Each cut-off sits
+analyse (it accepted 99% of very dark and 67% of tiny upscaled test
+photos). These three measures catch those. Each cut-off sits
 below every one of 749 training, 135 test and 100 real clinical oral photos
 (ml/scripts/photo_quality_stats.py), so no usable photo in those sets is
 refused.

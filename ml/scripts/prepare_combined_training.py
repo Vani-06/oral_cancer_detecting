@@ -1,11 +1,10 @@
 """
 Fold the client's own clinical photos into training, not just validation --
 the standard fix for the domain-shift failure documented in
-ml/artifacts/model_card.md (round 1: Kaggle-only training reached 92.6%
-Kaggle-test accuracy but an 85.7% false-Cancer-call rate on real client
-photos).
+ml/artifacts/model_card.md (Kaggle-only training reached 92.6% Kaggle-test
+accuracy but called 85.7% of real client photos Cancer).
 
-Honesty constraint that shapes this whole script: the client set has exactly
+Constraint that shapes this script: the client set has exactly
 ONE confirmed-cancer image. Whatever split is chosen, either that image is
 used for training (and cancer-detection sensitivity in this photo domain
 stays fundamentally unverified) or it's held out (and training sees zero
@@ -76,8 +75,8 @@ def main() -> None:
     n_train = CLIENT_NONCANCER_SPLIT["train"]
     n_val = CLIENT_NONCANCER_SPLIT["val"]
     train_rows = noncancer_rows[:n_train]
-    val_rows = noncancer_rows[n_train:n_train + n_val]
-    holdout_rows = noncancer_rows[n_train + n_val:]
+    val_rows = noncancer_rows[n_train : n_train + n_val]
+    holdout_rows = noncancer_rows[n_train + n_val :]
 
     # The single Cancer image goes to training -- see module docstring for why.
     for row in cancer_rows:

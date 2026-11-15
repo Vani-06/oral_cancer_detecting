@@ -2,16 +2,15 @@
 Case-level train/val/holdout split over the full client case set
 (prepare_client_cases.py), combined with the Kaggle split.
 
-Reuses round 2's exact patient assignment (prepare_combined_training.py:
-seeded shuffle of the 98 Non-Cancer spreadsheet photos -> 58 train / 20 val /
-20 holdout) so a model trained here can be compared against round 2 on the
-SAME 20 held-out patients. The difference is that every split now carries
-all photos of each patient (spreadsheet + verified folder photo), and no
-patient appears in more than one split.
+Uses the same patient assignment as prepare_combined_training.py (seeded
+shuffle of the 98 Non-Cancer spreadsheet photos: 58 train / 20 val / 20
+holdout), so models from both splits are compared on the same 20 held-out
+patients. Every split carries all photos of each patient (spreadsheet and
+verified folder photo), and no patient appears in more than one split.
 
-Cases not in round 2 at all (case 51 has no spreadsheet photo, so round 2
-never saw it) go to training. The single carcinoma case also goes to
-training, as in round 2 -- a held-out sample of one proves nothing.
+Cases without a spreadsheet photo (case 51) go to training. The single
+carcinoma case also goes to training: a held-out sample of one cannot
+measure anything.
 
 Usage:
     .venv/Scripts/python.exe scripts/prepare_case_split.py
@@ -54,8 +53,8 @@ def round2_case_assignment() -> tuple[set[int], set[int], set[int]]:
 
     n_train, n_val, _ = ROUND2_SPLIT
     train = {case_of(r["filename"]) for r in noncancer[:n_train]}
-    val = {case_of(r["filename"]) for r in noncancer[n_train:n_train + n_val]}
-    holdout = {case_of(r["filename"]) for r in noncancer[n_train + n_val:]}
+    val = {case_of(r["filename"]) for r in noncancer[n_train : n_train + n_val]}
+    holdout = {case_of(r["filename"]) for r in noncancer[n_train + n_val :]}
     return train, val, holdout
 
 
@@ -96,16 +95,15 @@ def main() -> None:
 
     def count(split: str) -> dict:
         d = OUT / split
-        return {
-            p.name: (len(list(p.iterdir())), len(list(p.glob("client_*"))))
-            for p in d.iterdir() if p.is_dir()
-        }
+        return {p.name: (len(list(p.iterdir())), len(list(p.glob("client_*")))) for p in d.iterdir() if p.is_dir()}
 
     print("train (total, of which client):", count("train"))
     print("val   (total, of which client):", count("val"))
-    print(f"holdout: {len(holdout_rows)} photos from {len(holdout_cases)} cases "
-          f"(same patients round 2 held out)")
-    leak = (holdout_cases & val_cases)
+    print(
+        f"holdout: {len(holdout_rows)} photos from {len(holdout_cases)} cases "
+        f"(same patients as prepare_combined_training.py)"
+    )
+    leak = holdout_cases & val_cases
     assert not leak, f"case overlap between holdout and val: {leak}"
 
 

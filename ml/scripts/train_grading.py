@@ -81,13 +81,15 @@ class CachedImages(Dataset):
         return self.transform(self.images[i]), int(self.labels[i])
 
 
-TRAIN_TF = transforms.Compose([
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomRotation(10),
-    transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
-    transforms.ToTensor(),
-    transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
-])
+TRAIN_TF = transforms.Compose(
+    [
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(10),
+        transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
+        transforms.ToTensor(),
+        transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+    ]
+)
 EVAL_TF = transforms.Compose([transforms.ToTensor(), transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD)])
 
 
@@ -126,8 +128,12 @@ def train(model, images, labels, epochs, lr, seed):
     weights = torch.tensor(len(labels) / (n_classes * np.maximum(counts, 1)), dtype=torch.float32)
     criterion = nn.CrossEntropyLoss(weight=weights)
     optimizer = optim.Adam([p for p in model.parameters() if p.requires_grad], lr=lr)
-    loader = DataLoader(CachedImages(images, labels, TRAIN_TF), batch_size=16, shuffle=True,
-                        generator=torch.Generator().manual_seed(seed))
+    loader = DataLoader(
+        CachedImages(images, labels, TRAIN_TF),
+        batch_size=16,
+        shuffle=True,
+        generator=torch.Generator().manual_seed(seed),
+    )
     for epoch in range(1, epochs + 1):
         model.train()
         total, correct, loss_sum = 0, 0, 0.0
@@ -162,7 +168,7 @@ def report(labels, groups, probs, title):
         "balanced_accuracy": float(recall.mean()),
         "within_one_grade": float((np.abs(pred - labels) <= 1).mean()),
         "quadratic_kappa": float(cohen_kappa_score(labels, pred, weights="quadratic")),
-        "recall": {g: float(r) for g, r in zip(GRADES, recall)},
+        "recall": {g: float(r) for g, r in zip(GRADES, recall, strict=False)},
         "confusion_rows_true_cols_pred": cm.tolist(),
         "majority_baseline_accuracy": float(np.bincount(labels).max() / len(labels)),
     }
@@ -205,12 +211,14 @@ def main():
         held = {int(r["case_id"]) for r in csv.DictReader(open(HOLDOUT_MANIFEST))}
         test_mask = np.isin(groups, list(held))
         normal = kaggle_images(["train", "val"], "Non-Cancer")
-        tr_images = [im for im, t in zip(images, test_mask) if not t] + normal
+        tr_images = [im for im, t in zip(images, test_mask, strict=False) if not t] + normal
         tr_labels = np.concatenate([labels[~test_mask], np.zeros(len(normal), dtype=int)])
-        print(f"train: {(~test_mask).sum()} client photos + {len(normal)} healthy; test: {test_mask.sum()} client photos")
+        print(
+            f"train: {(~test_mask).sum()} client photos + {len(normal)} healthy; test: {test_mask.sum()} client photos"
+        )
         model = train(build_model(args.init, len(classes)), tr_images, tr_labels, args.epochs, args.lr, args.seed)
         result = {}
-        pred = predict_probs(model, [im for im, t in zip(images, test_mask) if t]).argmax(1)
+        pred = predict_probs(model, [im for im, t in zip(images, test_mask, strict=False) if t]).argmax(1)
         true = labels[test_mask]
         result["client_holdout"] = {
             "photos": int(len(true)),
@@ -238,17 +246,21 @@ def main():
             if k in done:
                 continue
             print(f"fold {k}: train {len(tr)} photos, test {len(te)} photos ({len(set(groups[te]))} patients)")
-            model = train(build_model(args.init), [images[i] for i in tr], labels[tr], args.epochs, args.lr, args.seed + k)
+            model = train(
+                build_model(args.init), [images[i] for i in tr], labels[tr], args.epochs, args.lr, args.seed + k
+            )
             probs[te] = predict_probs(model, [images[i] for i in te])
             done.add(k)
             np.savez(partial, probs=probs, done=np.array(sorted(done)))
-        result = report(labels, groups, probs, f"{args.folds}-fold patient-grouped CV, init={args.init}, epochs={args.epochs}")
+        result = report(
+            labels, groups, probs, f"{args.folds}-fold patient-grouped CV, init={args.init}, epochs={args.epochs}"
+        )
         out = ARTIFACTS_DIR / f"grading_cv_{args.init}.json"
         out.write_text(json.dumps(result, indent=2))
         with open(ARTIFACTS_DIR / f"grading_cv_{args.init}_predictions.csv", "w", newline="") as f:
             w = csv.writer(f)
             w.writerow(["filename", "case_id", "true_grade", "pred_grade", *[f"p_{g}" for g in GRADES]])
-            for r, y, p in zip(rows, labels, probs):
+            for r, y, p in zip(rows, labels, probs, strict=False):
                 w.writerow([r["filename"], r["case_id"], GRADES[y], GRADES[p.argmax()], *[f"{v:.4f}" for v in p]])
         partial.unlink()
         print("wrote", out)
@@ -258,15 +270,18 @@ def main():
             images, labels = images + normal, np.concatenate([labels, np.zeros(len(normal), dtype=int)])
         model = train(build_model(args.init, len(classes)), images, labels, args.epochs, args.lr, args.seed)
         ckpt = ARTIFACTS_DIR / f"resnet50_dysplasia_grade_{'v2' if args.with_normal else 'v1'}.pt"
-        torch.save({
-            "state_dict": model.state_dict(),
-            "class_to_idx": {g: i for i, g in enumerate(classes)},
-            "img_size": IMG_SIZE,
-            "mean": IMAGENET_MEAN,
-            "std": IMAGENET_STD,
-            "init": args.init,
-            "epochs": args.epochs,
-        }, ckpt)
+        torch.save(
+            {
+                "state_dict": model.state_dict(),
+                "class_to_idx": {g: i for i, g in enumerate(classes)},
+                "img_size": IMG_SIZE,
+                "mean": IMAGENET_MEAN,
+                "std": IMAGENET_STD,
+                "init": args.init,
+                "epochs": args.epochs,
+            },
+            ckpt,
+        )
         print("wrote", ckpt)
 
 

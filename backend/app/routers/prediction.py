@@ -55,8 +55,7 @@ def _parse_metadata(raw: str | None) -> dict | None:
         return PatientMetadata.model_validate(data).model_dump(exclude_none=True)
     except ValidationError as exc:
         problems = "; ".join(
-            f"{'.'.join(str(p) for p in err['loc']) or 'metadata'}: {err['msg']}"
-            for err in exc.errors()
+            f"{'.'.join(str(p) for p in err['loc']) or 'metadata'}: {err['msg']}" for err in exc.errors()
         )
         raise ValueError(f"Invalid patient metadata -- {problems}") from exc
 
@@ -138,8 +137,11 @@ async def upload_prediction(
     if settings.ANALYSIS_PAUSED:
         # Incident switch (docs/incident-and-breach-response.md): no new
         # results while a serious problem is investigated; past results stay readable.
-        raise HTTPException(status_code=503, detail="New analyses are paused while a problem is investigated. "
-                                                    "Existing results and reports are still available.")
+        raise HTTPException(
+            status_code=503,
+            detail="New analyses are paused while a problem is investigated. "
+            "Existing results and reports are still available.",
+        )
     retry_after = predict_limiter.hit(str(user.id))
     if retry_after is not None:
         raise HTTPException(
@@ -153,7 +155,10 @@ async def upload_prediction(
     try:
         metadata = _parse_metadata(metadata_json)
         prediction = service.create_prediction(
-            user=user, file=file, metadata=metadata, reference_file=reference_file,
+            user=user,
+            file=file,
+            metadata=metadata,
+            reference_file=reference_file,
             consent_at=utcnow(),
         )
     except ValueError as exc:

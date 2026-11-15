@@ -9,7 +9,8 @@ the cancer detection result -- not just text. No model score is printed.
 
 from pathlib import Path
 
-from PIL import Image as PILImage, ImageOps, UnidentifiedImageError
+from PIL import Image as PILImage
+from PIL import ImageOps, UnidentifiedImageError
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.units import inch
 from reportlab.lib.utils import ImageReader, simpleSplit
@@ -60,6 +61,7 @@ TEXT_WIDTH = PAGE_WIDTH - 2 * MARGIN
 # correctly (3-grade CV: 44.9% vs 39.3% for always answering "moderate").
 GRADE_RELIABILITY_NOTE = "Low reliability: matched the biopsy grade for about 40% of patients in testing."
 
+
 def grade_text(grade: str | None) -> str:
     if grade == "none":
         return "No dysplasia"
@@ -73,7 +75,10 @@ def cancer_text(label: str | None, assessment: str | None = None) -> str:
             "no_cancer": "No cancer",
             "inconclusive": "Inconclusive - retake the photo or refer",
         }[assessment]
-    return {"Cancer": "Cancer - screening estimate; see a specialist, only a biopsy confirms", "Non-Cancer": "No cancer"}.get(label or "", "Pending")
+    return {
+        "Cancer": "Cancer - screening estimate; see a specialist, only a biopsy confirms",
+        "Non-Cancer": "No cancer",
+    }.get(label or "", "Pending")
 
 
 HABIT_SIDE_NOTE = "Lesion is on the side where the patient holds pan / tobacco."
@@ -180,7 +185,8 @@ def generate_report_pdf(prediction: Prediction, output_path: Path) -> None:
             _draw_image_fit(c, heatmap_path, heatmap_x, image_top)
             c.setFont("Helvetica-Oblique", 9)
             c.drawString(
-                heatmap_x, image_top - IMAGE_MAX_HEIGHT - 0.15 * inch,
+                heatmap_x,
+                image_top - IMAGE_MAX_HEIGHT - 0.15 * inch,
                 "Grad-CAM explainability heatmap",
             )
 

@@ -42,11 +42,13 @@ def load_model(path: Path):
     model.fc = torch.nn.Linear(model.fc.in_features, 2)
     model.load_state_dict(ckpt["state_dict"])
     model.eval()
-    tf = transforms.Compose([
-        transforms.Resize((ckpt["img_size"], ckpt["img_size"])),
-        transforms.ToTensor(),
-        transforms.Normalize(ckpt["mean"], ckpt["std"]),
-    ])
+    tf = transforms.Compose(
+        [
+            transforms.Resize((ckpt["img_size"], ckpt["img_size"])),
+            transforms.ToTensor(),
+            transforms.Normalize(ckpt["mean"], ckpt["std"]),
+        ]
+    )
     return model, tf, ckpt["class_to_idx"]["Cancer"]
 
 
@@ -58,7 +60,7 @@ def run(model, tf, cancer_idx, images: list[Image.Image]):
     probs = []
     try:
         for start in range(0, len(images), 16):
-            batch = torch.stack([tf(im) for im in images[start:start + 16]])
+            batch = torch.stack([tf(im) for im in images[start : start + 16]])
             probs.append(torch.softmax(model(batch), 1)[:, cancer_idx])
     finally:
         hook.remove()
@@ -97,8 +99,13 @@ VARIANTS = {
 
 def synthetic_images(rng: np.random.Generator) -> dict[str, Image.Image]:
     out = {}
-    for name, rgb in {"white": (255, 255, 255), "black": (0, 0, 0), "red": (200, 30, 30),
-                      "pink": (230, 150, 150), "grey": (128, 128, 128)}.items():
+    for name, rgb in {
+        "white": (255, 255, 255),
+        "black": (0, 0, 0),
+        "red": (200, 30, 30),
+        "pink": (230, 150, 150),
+        "grey": (128, 128, 128),
+    }.items():
         out[f"flat_{name}"] = Image.new("RGB", (640, 480), rgb)
     for i in range(5):
         out[f"noise_{i}"] = Image.fromarray(rng.integers(0, 256, (480, 640, 3), dtype=np.uint8))
@@ -139,17 +146,27 @@ def main():
     # Reference set for "what an oral photo looks like": the training split.
     for split in ["train", "val"]:
         paths = sorted(p for p in (DATA / "case_split" / split).rglob("*") if p.suffix.lower() in IMAGE_EXTS)
-        record(f"ref_{split}", [open_rgb(p) for p in paths], [int(p.parent.name == "Cancer") for p in paths],
-               [p.name for p in paths])
+        record(
+            f"ref_{split}",
+            [open_rgb(p) for p in paths],
+            [int(p.parent.name == "Cancer") for p in paths],
+            [p.name for p in paths],
+        )
 
     # In-distribution test sets, never trained on.
     holdout = list(csv.DictReader(open(DATA / "case_split" / "holdout" / "manifest.csv")))
     kaggle = sorted(p for p in (DATA / "kaggle_split" / "test").rglob("*") if p.suffix.lower() in IMAGE_EXTS)
     sets = {
-        "client_holdout": ([open_rgb(DATA / "case_split" / "holdout" / r["filename"]) for r in holdout],
-                           [int(r["label"] == "Cancer") for r in holdout], [r["filename"] for r in holdout]),
-        "kaggle_test": ([open_rgb(p) for p in kaggle], [int(p.parent.name == "Cancer") for p in kaggle],
-                        [f"{p.parent.name}/{p.name}" for p in kaggle]),
+        "client_holdout": (
+            [open_rgb(DATA / "case_split" / "holdout" / r["filename"]) for r in holdout],
+            [int(r["label"] == "Cancer") for r in holdout],
+            [r["filename"] for r in holdout],
+        ),
+        "kaggle_test": (
+            [open_rgb(p) for p in kaggle],
+            [int(p.parent.name == "Cancer") for p in kaggle],
+            [f"{p.parent.name}/{p.name}" for p in kaggle],
+        ),
     }
     for name, (images, labels, names) in sets.items():
         record(f"{name}/original", images, labels, names)

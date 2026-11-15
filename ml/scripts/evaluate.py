@@ -22,7 +22,8 @@ client_holdout/ for any checkpoint trained on the combined set.
 
 Usage:
     .venv/Scripts/python.exe scripts/evaluate.py
-    .venv/Scripts/python.exe scripts/evaluate.py --checkpoint artifacts/resnet50_oral_cancer_v2.pt --client-eval-dir data/client_holdout
+    .venv/Scripts/python.exe scripts/evaluate.py \
+        --checkpoint artifacts/resnet50_oral_cancer_v2.pt --client-eval-dir data/client_holdout
 """
 
 import argparse
@@ -94,9 +95,7 @@ def report(name: str, y_true, y_pred, y_score, warn_on_single_class: bool = Fals
         )
 
     acc = accuracy_score(y_true, y_pred)
-    precision, recall, f1, _ = precision_recall_fscore_support(
-        y_true, y_pred, average="binary", zero_division=0
-    )
+    precision, recall, f1, _ = precision_recall_fscore_support(y_true, y_pred, average="binary", zero_division=0)
     print(f"Accuracy:  {acc:.3f}")
     print(f"Precision (Cancer): {precision:.3f}")
     print(f"Recall (Cancer):    {recall:.3f}")
@@ -144,11 +143,13 @@ def load_client_set(client_dir: Path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--checkpoint", type=Path,
+        "--checkpoint",
+        type=Path,
         default=ML_DIR / "artifacts" / "resnet50_oral_cancer.pt",
     )
     parser.add_argument(
-        "--client-eval-dir", type=Path,
+        "--client-eval-dir",
+        type=Path,
         default=ML_DIR / "data" / "client_validation",
         help="Must be data NOT used in this checkpoint's training (see module docstring).",
     )
@@ -173,7 +174,10 @@ def main():
         y_true, y_pred, y_score = predict_batch(model, tf, class_to_idx, pairs)
         report(
             f"Client evaluation ({args.client_eval_dir.name}, real clinical photos)",
-            y_true, y_pred, y_score, warn_on_single_class=True,
+            y_true,
+            y_pred,
+            y_score,
+            warn_on_single_class=True,
         )
     else:
         print(f"Skipping client eval set -- not found at {args.client_eval_dir}")

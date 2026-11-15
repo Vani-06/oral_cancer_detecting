@@ -1,4 +1,4 @@
-"""Basic photo-quality check (review item 23)."""
+"""Photo-quality check."""
 
 import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter

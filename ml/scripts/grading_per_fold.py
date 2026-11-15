@@ -1,5 +1,5 @@
 """
-Per-fold variability of the grading cross-validation (review item 16).
+Per-fold variability of the grading cross-validation.
 
 Recomputes the folds of `train_grading.py cv` (StratifiedGroupKFold, 5
 folds, shuffle, random_state 42 -- deterministic) and scores the saved
@@ -37,21 +37,34 @@ def main():
         pat = sorted(set(groups[te]))
         pt = np.array([y[groups == g][0] for g in pat])
         pp = np.array([probs[groups == g].mean(0).argmax() for g in pat])
-        folds.append({
-            "fold": k, "photos": int(len(te)), "patients": len(pat),
-            "photo_accuracy": float((pred[te] == y[te]).mean()),
-            "photo_kappa": float(cohen_kappa_score(y[te], pred[te], weights="quadratic")),
-            "patient_accuracy": float((pp == pt).mean()),
-            "majority_baseline": float(np.bincount(y[te], minlength=3).max() / len(te)),
-        })
-    summary = {k: {"mean": float(np.mean([f[k] for f in folds])), "sd": float(np.std([f[k] for f in folds], ddof=1)),
-                   "min": float(np.min([f[k] for f in folds])), "max": float(np.max([f[k] for f in folds]))}
-               for k in ("photo_accuracy", "photo_kappa", "patient_accuracy", "majority_baseline")}
+        folds.append(
+            {
+                "fold": k,
+                "photos": int(len(te)),
+                "patients": len(pat),
+                "photo_accuracy": float((pred[te] == y[te]).mean()),
+                "photo_kappa": float(cohen_kappa_score(y[te], pred[te], weights="quadratic")),
+                "patient_accuracy": float((pp == pt).mean()),
+                "majority_baseline": float(np.bincount(y[te], minlength=3).max() / len(te)),
+            }
+        )
+    summary = {
+        k: {
+            "mean": float(np.mean([f[k] for f in folds])),
+            "sd": float(np.std([f[k] for f in folds], ddof=1)),
+            "min": float(np.min([f[k] for f in folds])),
+            "max": float(np.max([f[k] for f in folds])),
+        }
+        for k in ("photo_accuracy", "photo_kappa", "patient_accuracy", "majority_baseline")
+    }
     out = {"folds": folds, "summary": summary}
     (ML_DIR / "artifacts" / f"grading_per_fold_{args.init}.json").write_text(json.dumps(out, indent=2))
     for f in folds:
-        print(f"fold {f['fold']}: {f['patients']} patients, photo acc {f['photo_accuracy']:.3f}, kappa {f['photo_kappa']:.3f}, "
-              f"patient acc {f['patient_accuracy']:.3f}, always-moderate {f['majority_baseline']:.3f}")
+        print(
+            f"fold {f['fold']}: {f['patients']} patients, photo acc {f['photo_accuracy']:.3f}, "
+            f"kappa {f['photo_kappa']:.3f}, "
+            f"patient acc {f['patient_accuracy']:.3f}, always-moderate {f['majority_baseline']:.3f}"
+        )
     for k, v in summary.items():
         print(f"{k:18s} mean {v['mean']:.3f} SD {v['sd']:.3f} (range {v['min']:.3f}-{v['max']:.3f})")
 

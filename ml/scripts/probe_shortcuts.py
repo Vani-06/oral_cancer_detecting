@@ -18,7 +18,6 @@ import csv
 import sys
 from pathlib import Path
 
-import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -63,8 +62,9 @@ def glare(im):
 def glove(im):
     im = im.copy()
     w, h = im.size
-    ImageDraw.Draw(im).rounded_rectangle((w * 0.72, h * 0.05, w * 1.1, h * 0.45), radius=int(w * 0.08),
-                                         fill=(235, 238, 242))
+    ImageDraw.Draw(im).rounded_rectangle(
+        (w * 0.72, h * 0.05, w * 1.1, h * 0.45), radius=int(w * 0.08), fill=(235, 238, 242)
+    )
     return im
 
 
@@ -96,8 +96,10 @@ def main():
     data = ML_DIR / "data"
     sets = {
         "Kaggle healthy": [st.open_rgb(p) for p in sorted((data / "kaggle_split_fixed/test/Non-Cancer").glob("*"))],
-        "client dysplasia": [st.open_rgb(data / "case_split/holdout" / r["filename"])
-                             for r in csv.DictReader(open(data / "case_split/holdout/manifest.csv"))],
+        "client dysplasia": [
+            st.open_rgb(data / "case_split/holdout" / r["filename"])
+            for r in csv.DictReader(open(data / "case_split/holdout/manifest.csv"))
+        ],
         "CANCER caught": [st.open_rgb(p) for p in sorted((data / "kaggle_split_fixed/test/Cancer").glob("*"))],
     }
     for ckpt in sys.argv[1:]:

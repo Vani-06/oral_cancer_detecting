@@ -28,11 +28,7 @@ from pathlib import Path
 from PIL import Image
 
 RAW_BASE = (
-    Path(__file__).resolve().parent.parent
-    / "data"
-    / "kaggle_raw"
-    / "Oral cancer Dataset 2.0"
-    / "OC Dataset kaggle new"
+    Path(__file__).resolve().parent.parent / "data" / "kaggle_raw" / "Oral cancer Dataset 2.0" / "OC Dataset kaggle new"
 )
 OUT_BASE = Path(__file__).resolve().parent.parent / "data" / "kaggle_split"
 
@@ -88,10 +84,7 @@ def cluster_duplicates(files: list[Path]) -> list[list[Path]]:
 
 def assign_splits(n_clusters: int, seed: int) -> list[str]:
     rng = random.Random(seed)
-    labels = (
-        ["train"] * round(n_clusters * SPLIT_RATIOS["train"])
-        + ["val"] * round(n_clusters * SPLIT_RATIOS["val"])
-    )
+    labels = ["train"] * round(n_clusters * SPLIT_RATIOS["train"]) + ["val"] * round(n_clusters * SPLIT_RATIOS["val"])
     labels += ["test"] * (n_clusters - len(labels))
     rng.shuffle(labels)
     return labels
@@ -119,7 +112,7 @@ def main() -> None:
             f"({n_dupe_clusters} clusters absorbed {n_dupe_files} duplicate/near-duplicate files)"
         )
 
-        for cluster, split in zip(clusters, splits):
+        for cluster, split in zip(clusters, splits, strict=False):
             # Keep only the canonical (first) file per cluster -- duplicates
             # are dropped entirely, not just kept out of other splits, so the
             # model doesn't see the same photo weighted multiple times either.

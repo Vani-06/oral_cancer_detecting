@@ -1,0 +1,18 @@
+# Lint and format settings for all Python in the repository (backend, ml, deploy).
+line-length = 120
+target-version = "py313"
+extend-exclude = ["backend/alembic/versions"]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "B008",  # FastAPI dependencies are declared as default arguments (Depends, File, Form)
+]
+
+[lint.per-file-ignores]
+# Scripts put their own folder or the backend on sys.path before importing.
+"ml/scripts/*" = ["E402"]
+"deploy/huggingface/*" = ["E402"]
+
+[lint.isort]
+known-first-party = ["app"]

@@ -138,7 +138,10 @@ class AuthService:
 def create_invite(db: Session, email: str | None = None, days: int = 14) -> str:
     """Creates a one-time invitation code; returns the code (stored hashed)."""
     code = secrets.token_urlsafe(12)
-    db.add(Invite(code_hash=_sha256(code), email=email.lower() if email else None,
-                  expires_at=utcnow() + timedelta(days=days)))
+    db.add(
+        Invite(
+            code_hash=_sha256(code), email=email.lower() if email else None, expires_at=utcnow() + timedelta(days=days)
+        )
+    )
     db.commit()
     return code

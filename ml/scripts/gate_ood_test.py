@@ -1,6 +1,6 @@
 """
-Review item 23: how the photo check (PhotoGate) treats images that are not
-usable oral photos.
+How the photo check (PhotoGate) and the quality check treat images that
+are not usable oral photos.
 
 Groups:
   * non-oral: histopathology slide photos (a folder given on the command line),
@@ -47,7 +47,7 @@ def synthetic(n_each=5, seed=0):
         page = Image.new("RGB", (480, 640), "white")
         draw = ImageDraw.Draw(page)
         for line in range(30):
-            draw.text((20, 15 + line * 20), "Patient report line %d lorem ipsum dolor sit amet" % (line + i), fill="black")
+            draw.text((20, 15 + line * 20), f"Patient report line {line + i} lorem ipsum dolor sit amet", fill="black")
         out["text page"].append(page)
         a = np.linspace(0, 255, 480)[None, :, None] * np.ones((360, 1, 3))
         a[..., i % 3] = 255 - a[..., i % 3]
@@ -71,10 +71,14 @@ def rate(gate, images):
     """Accepted by the photo check alone, and by the photo check plus the
     quality check (what the app does)."""
     gate_ok = [gate.accepts(im) for im in images]
-    both = [ok and quality_problem(im) is None for ok, im in zip(gate_ok, images)]
+    both = [ok and quality_problem(im) is None for ok, im in zip(gate_ok, images, strict=False)]
     n = max(len(images), 1)
-    return {"n": len(images), "accepted_by_photo_check": int(sum(gate_ok)),
-            "accepted_by_app": int(sum(both)), "accepted_share_app": round(sum(both) / n, 3)}
+    return {
+        "n": len(images),
+        "accepted_by_photo_check": int(sum(gate_ok)),
+        "accepted_by_app": int(sum(both)),
+        "accepted_share_app": round(sum(both) / n, 3),
+    }
 
 
 def main():

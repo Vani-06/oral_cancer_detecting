@@ -1,5 +1,5 @@
 """
-Build an untouched final test set (review item 17).
+Build an untouched final test set.
 
 Candidates: the older Kaggle "Oral Cancer" release (500 cancer / 250
 non-cancer). Kept only if not a near-duplicate (24x24 greyscale thumbnail
@@ -42,10 +42,20 @@ def images(root):
 def main():
     old = DATA / "kaggle_raw" / "Oral Cancer"
     candidates = images(old)
-    seen_roots = [DATA / "kaggle_raw" / "Oral cancer Dataset 2.0", DATA / "client_cases", DATA / "case_split",
-                  DATA / "case_split_fixed", DATA / "kaggle_split", DATA / "kaggle_split_fixed",
-                  DATA / "external", DATA / "test_images", DATA / "client_validation", DATA / "client_holdout",
-                  DATA / "combined_train", DATA / "combined_val"]
+    seen_roots = [
+        DATA / "kaggle_raw" / "Oral cancer Dataset 2.0",
+        DATA / "client_cases",
+        DATA / "case_split",
+        DATA / "case_split_fixed",
+        DATA / "kaggle_split",
+        DATA / "kaggle_split_fixed",
+        DATA / "external",
+        DATA / "test_images",
+        DATA / "client_validation",
+        DATA / "client_holdout",
+        DATA / "combined_train",
+        DATA / "combined_val",
+    ]
     seen = [p for r in seen_roots if r.exists() for p in images(r)]
     S = np.stack([thumb(p) for p in seen])
     C = np.stack([thumb(p) for p in candidates])
@@ -72,10 +82,14 @@ def main():
         w = csv.writer(f)
         w.writerow(["file", "label", "source"])
         w.writerows(rows)
-    (OUT / "LOCKED.txt").write_text("Untouched final test set. Do not use for any model, threshold or calibration choice.\n")
+    (OUT / "LOCKED.txt").write_text(
+        "Untouched final test set. Do not use for any model, threshold or calibration choice.\n"
+    )
     n_c = sum(r[1] == "Cancer" for r in rows)
-    print(f"{len(candidates)} candidates; {int(novel.sum())} not seen before; {len(rows)} after removing duplicates "
-          f"within the set: {n_c} cancer, {len(rows) - n_c} non-cancer")
+    print(
+        f"{len(candidates)} candidates; {int(novel.sum())} not seen before; {len(rows)} after removing duplicates "
+        f"within the set: {n_c} cancer, {len(rows) - n_c} non-cancer"
+    )
 
 
 if __name__ == "__main__":

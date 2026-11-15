@@ -77,8 +77,12 @@ class Levelled(Dataset):
         self.items, self.train = items, train
         tail = [transforms.ToTensor(), transforms.Normalize(MEAN, STD)]
         self.plain = transforms.Compose([transforms.Resize((SIZE, SIZE)), *tail])
-        aug = [transforms.RandomHorizontalFlip(), transforms.RandomRotation(10),
-               transforms.ColorJitter(0.1, 0.1, 0.1), *tail]
+        aug = [
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomRotation(10),
+            transforms.ColorJitter(0.1, 0.1, 0.1),
+            *tail,
+        ]
         self.mild = transforms.Compose([transforms.RandomResizedCrop(SIZE, scale=(0.7, 1.0)), *aug])
         self.zoom = transforms.Compose([transforms.RandomResizedCrop(SIZE, scale=(0.15, 0.6)), *aug])
 
@@ -141,7 +145,8 @@ def main():
         return [(p, lv) for p in paths if (lv := level_of(p, grades)) is not None]
 
     train_items, val_items = items("train"), items("val")
-    print("train levels:", dict(zip(LEVELS, np.bincount([lv for _, lv in train_items], minlength=6).tolist())), flush=True)
+    counts = np.bincount([lv for _, lv in train_items], minlength=6).tolist()
+    print("train levels:", dict(zip(LEVELS, counts, strict=False)), flush=True)
 
     model = OrdinalResNet()
     opt = torch.optim.Adam([p for p in model.parameters() if p.requires_grad], lr=args.lr)
@@ -159,11 +164,24 @@ def main():
             opt.step()
             total += loss.item() * len(lv)
         auc = roc_auc_score(val_cancer, predict(model, val_paths)[:, 4])
-        print(f"epoch {epoch:2d}/{args.epochs} | loss {total / len(train_items):.4f} | val cancer AUC {auc:.4f}", flush=True)
+        print(
+            f"epoch {epoch:2d}/{args.epochs} | loss {total / len(train_items):.4f} | val cancer AUC {auc:.4f}",
+            flush=True,
+        )
         if auc > best:
             best = auc
-            torch.save({"state_dict": model.state_dict(), "levels": LEVELS, "img_size": SIZE,
-                        "mean": MEAN, "std": STD, "epoch": epoch, "val_auc": auc}, ckpt)
+            torch.save(
+                {
+                    "state_dict": model.state_dict(),
+                    "levels": LEVELS,
+                    "img_size": SIZE,
+                    "mean": MEAN,
+                    "std": STD,
+                    "epoch": epoch,
+                    "val_auc": auc,
+                },
+                ckpt,
+            )
     print(f"best validation cancer AUC {best:.4f}; wrote {ckpt}", flush=True)
     model.load_state_dict(torch.load(ckpt, weights_only=False)["state_dict"])
     evaluate(model, val_items, grades)
@@ -178,7 +196,9 @@ def evaluate(model, val_items, grades):
 
     val_paths = [p for p, _ in val_items]
     val_y = np.array([lv == 5 for _, lv in val_items])
-    test_paths = sorted(p for p in (DATA / "kaggle_split_fixed" / "test").rglob("*") if p.suffix.lower() in st.IMAGE_EXTS)
+    test_paths = sorted(
+        p for p in (DATA / "kaggle_split_fixed" / "test").rglob("*") if p.suffix.lower() in st.IMAGE_EXTS
+    )
     test_y = np.array([p.parent.name == "Cancer" for p in test_paths])
     benign_test = np.array([p.name.startswith("relabelled_") for p in test_paths])
     hold_rows = list(csv.DictReader(open(DATA / "case_split" / "holdout" / "manifest.csv")))
@@ -200,8 +220,10 @@ def evaluate(model, val_items, grades):
     ]:
         f = test_s >= t
         rows[name] = {
-            "val_auc": float(roc_auc_score(val_y, val_s)), "test_auc": float(roc_auc_score(test_y, test_s)),
-            "test_sensitivity": float(f[test_y].mean()), "test_specificity": float((~f[~test_y]).mean()),
+            "val_auc": float(roc_auc_score(val_y, val_s)),
+            "test_auc": float(roc_auc_score(test_y, test_s)),
+            "test_sensitivity": float(f[test_y].mean()),
+            "test_specificity": float((~f[~test_y]).mean()),
             "test_benign_lesions_flagged": f"{int(f[benign_test].sum())}/{int(benign_test.sum())}",
             "client_dysplasia_flagged": float((hold_s >= t).mean()),
             "external_healthy_cheek_flagged": f"{int((cheek_s >= t).sum())}/{len(cheek_s)}",
@@ -212,7 +234,9 @@ def evaluate(model, val_items, grades):
     expected = ho.sum(1)  # E[level] = sum_k P(level > k)
     grade_pred = np.clip(np.rint(expected), 2, 4)[graded]
     rows["risk_continuum"]["client_holdout_grade_accuracy"] = float((grade_pred == hold_level[graded]).mean())
-    rows["risk_continuum"]["client_holdout_grade_kappa"] = float(cohen_kappa_score(hold_level[graded], grade_pred, weights="quadratic"))
+    rows["risk_continuum"]["client_holdout_grade_kappa"] = float(
+        cohen_kappa_score(hold_level[graded], grade_pred, weights="quadratic")
+    )
     rows["majority_grade_baseline_accuracy"] = float(np.bincount(hold_level[graded]).max() / graded.sum())
     print(json.dumps(rows, indent=2))
     (ML_DIR / "artifacts" / "risk_continuum_eval.json").write_text(json.dumps(rows, indent=2))

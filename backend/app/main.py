@@ -54,6 +54,7 @@ async def security_headers(request: Request, call_next):
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
 
+
 # No static mount for UPLOAD_DIR: patient photos and heatmaps are served only
 # through the authenticated, owner-checked /predictions/{id}/image|heatmap.
 

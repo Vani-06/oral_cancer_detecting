@@ -11,14 +11,13 @@ from pathlib import Path
 
 import pytest
 import torch
+from conftest import CONSENT, VALID_METADATA, jpeg_bytes, register
 from PIL import Image
 from torchvision.models import resnet50
 
-from conftest import CONSENT, VALID_METADATA, jpeg_bytes, register
 from app.core.config import settings
 from app.services import inference_service as inference_module
 from app.services import prediction_service as prediction_module
-
 
 GRADES = {"no_dysplasia": 0, "mild_dysplasia": 1, "moderate_dysplasia": 2, "severe_dysplasia": 3}
 
@@ -152,12 +151,23 @@ def test_report_shows_grade_and_detection_but_no_score(tmp_root):
 
     lines = []
     original = report_service.canvas.Canvas.drawString
-    report_service.canvas.Canvas.drawString = lambda self, x, y, text, *a, **k: (lines.append(text), original(self, x, y, text, *a, **k))[1]
+    report_service.canvas.Canvas.drawString = lambda self, x, y, text, *a, **k: (
+        lines.append(text),
+        original(self, x, y, text, *a, **k),
+    )[1]
     try:
         record = SimpleNamespace(
-            prediction_id=7, created_at=datetime(2026, 1, 1), prediction="Non-Cancer", confidence=0.93,
-            dysplasia_grade="severe", filename="missing.jpg", heatmap_path=None, metadata_json=None,
-            assessment="no_cancer", reference_status="used", model_version="cancer=test; grade=test",
+            prediction_id=7,
+            created_at=datetime(2026, 1, 1),
+            prediction="Non-Cancer",
+            confidence=0.93,
+            dysplasia_grade="severe",
+            filename="missing.jpg",
+            heatmap_path=None,
+            metadata_json=None,
+            assessment="no_cancer",
+            reference_status="used",
+            model_version="cancer=test; grade=test",
         )
         report_service.generate_report_pdf(record, tmp_root / "graded.pdf")
     finally:
@@ -184,9 +194,18 @@ def gated_inference(tmp_root, enabled_inference, monkeypatch):
     backbone.fc = torch.nn.Identity()
     backbone.eval()
     gate_path = tmp_root / "random_gate.pt"
-    torch.save({"backbone_state_dict": backbone.state_dict(), "bank": torch.zeros(1, 2048), "k": 1,
-                "threshold": 1e-4, "img_size": 224, "mean": [0.485, 0.456, 0.406],
-                "std": [0.229, 0.224, 0.225]}, gate_path)
+    torch.save(
+        {
+            "backbone_state_dict": backbone.state_dict(),
+            "bank": torch.zeros(1, 2048),
+            "k": 1,
+            "threshold": 1e-4,
+            "img_size": 224,
+            "mean": [0.485, 0.456, 0.406],
+            "std": [0.229, 0.224, 0.225],
+        },
+        gate_path,
+    )
     gate = inference_module.PhotoGate(gate_path)
     with torch.no_grad():
         feature = backbone(gate._transform(reference).unsqueeze(0))[0]
@@ -253,12 +272,18 @@ def jpeg_of(color):
 
 
 def post_pair(client, auth, lesion, reference):
-    files = {"file": ("lesion.jpg", lesion, "image/jpeg"), "reference_file": ("other_side.jpg", reference, "image/jpeg")}
+    files = {
+        "file": ("lesion.jpg", lesion, "image/jpeg"),
+        "reference_file": ("other_side.jpg", reference, "image/jpeg"),
+    }
     return client.post("/predict", headers=auth, files=files, data=CONSENT)
 
 
 def test_three_way_assessment_follows_the_triage_thresholds(client, auth, enabled_inference, monkeypatch):
-    result = lambda: client.get(f"/predictions/{post(client, auth)['prediction_id']}", headers=auth).json()["assessment"]  # noqa: E731
+    def result():
+        prediction_id = post(client, auth)["prediction_id"]
+        return client.get(f"/predictions/{prediction_id}", headers=auth).json()["assessment"]
+
     monkeypatch.setattr(settings, "TRIAGE_NO_CANCER_BELOW", 1e-9)
     monkeypatch.setattr(settings, "TRIAGE_CANCER_AT", 2e-9)
     assert result() == "cancer"

@@ -29,7 +29,7 @@ def normalise_database_url(url: str) -> str:
     ships psycopg 3."""
     for prefix in ("postgres://", "postgresql://"):
         if url.startswith(prefix):
-            return "postgresql+psycopg://" + url[len(prefix):]
+            return "postgresql+psycopg://" + url[len(prefix) :]
     return url
 
 
@@ -38,9 +38,8 @@ class Settings:
     APP_DIR: Path = BASE_DIR / "app"
 
     UPLOAD_DIR: Path = Path(os.getenv("UPLOAD_DIR", str(APP_DIR / "uploads")))
-    # Kept apart from UPLOAD_DIR (which once was served publicly). Reports are
-    # only reachable via the authenticated GET /reports/{id} endpoint, and
-    # are regenerated if the file is missing, so this can be ephemeral.
+    # Reports are served only through GET /reports/{id} and regenerated when
+    # missing, so this directory can be ephemeral.
     REPORT_DIR: Path = Path(os.getenv("REPORT_DIR", str(BASE_DIR / "reports")))
     ALLOWED_EXTENSIONS: set[str] = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
     MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "10"))
@@ -57,9 +56,9 @@ class Settings:
 
     # Open sign-up is convenient in development; in production accounts
     # should be created deliberately, so it defaults to off there.
-    ALLOW_REGISTRATION: bool = os.getenv(
-        "ALLOW_REGISTRATION", "false" if ENVIRONMENT == "production" else "true"
-    ).lower() == "true"
+    ALLOW_REGISTRATION: bool = (
+        os.getenv("ALLOW_REGISTRATION", "false" if ENVIRONMENT == "production" else "true").lower() == "true"
+    )
 
     # Failed logins allowed per (IP, email) within the window before a 429.
     LOGIN_MAX_FAILURES: int = int(os.getenv("LOGIN_MAX_FAILURES", "5"))
@@ -168,18 +167,18 @@ class Settings:
         """Which model files and triage thresholds produce results, stored
         with every analysis and printed on its report (traceability)."""
         stem = lambda v: Path(v).stem if v else "none"  # noqa: E731
-        return (f"cancer={stem(self.MODEL_PATH)}; grade={stem(self.GRADING_MODEL_PATH)}; "
-                f"gate={stem(self.GATE_MODEL_PATH)}; T={self.TEMPERATURE}; "
-                f"triage={self.TRIAGE_NO_CANCER_BELOW}/{self.TRIAGE_CANCER_AT}")
+        return (
+            f"cancer={stem(self.MODEL_PATH)}; grade={stem(self.GRADING_MODEL_PATH)}; "
+            f"gate={stem(self.GATE_MODEL_PATH)}; T={self.TEMPERATURE}; "
+            f"triage={self.TRIAGE_NO_CANCER_BELOW}/{self.TRIAGE_CANCER_AT}"
+        )
 
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"
 
     def validate(self) -> None:
-        if self.is_production and (
-            self.SECRET_KEY in _PLACEHOLDER_SECRETS or len(self.SECRET_KEY) < 32
-        ):
+        if self.is_production and (self.SECRET_KEY in _PLACEHOLDER_SECRETS or len(self.SECRET_KEY) < 32):
             raise RuntimeError(
                 "SECRET_KEY must be a random value of at least 32 characters in production "
                 '(e.g. python -c "import secrets; print(secrets.token_urlsafe(48))")'

@@ -1,16 +1,16 @@
 from datetime import datetime
 from typing import Literal
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
 # Model scores are deliberately never part of any response: the app reports a
 # grade and a detection result, not a probability a clinician might over-read.
 DysplasiaGrade = Literal["none", "mild", "moderate", "severe"]
 Assessment = Literal["cancer", "no_cancer", "inconclusive"]
 ReferenceStatus = Literal["used", "not_normal"]
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-
-
 # --- Auth schemas ---
+
 
 class RegisterRequest(BaseModel):
     email: str = Field(min_length=3, max_length=255)
@@ -118,6 +118,7 @@ class FeedbackIn(BaseModel):
 
 
 # --- Prediction schemas ---
+
 
 class PatientMetadata(BaseModel):
     """Server-side mirror of frontend/src/lib/metadataSchema.ts.

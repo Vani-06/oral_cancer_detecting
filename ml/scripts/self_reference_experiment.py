@@ -42,31 +42,41 @@ DATA = ML_DIR / "data"
 FEATURES = ["logit_p", "contrast", "logit_gap", "cam_peak", "cam_area"]
 
 
+def _pooled(fmap, weight):
+    """Feature vector averaged over the map with the given spatial weights."""
+    return (fmap * weight[:, None]).flatten(2).sum(2) / (weight.flatten(1).sum(1)[:, None] + 1e-8)
+
+
 @torch.no_grad()
 def describe(model_bundle, images):
     model, tf, cancer_idx = model_bundle
     w = model.fc.weight[cancer_idx] - model.fc.weight[1 - cancer_idx]  # cancer-vs-other direction
-    b = model.fc.bias[cancer_idx] - model.fc.bias[1 - cancer_idx]
     maps = []
     hook = model.layer4.register_forward_hook(lambda m, i, o: maps.append(o))
     rows = []
     try:
         for start in range(0, len(images), 16):
             maps.clear()
-            batch = torch.stack([tf(im) for im in images[start:start + 16]])
+            batch = torch.stack([tf(im) for im in images[start : start + 16]])
             logits = model(batch)
             fmap = maps[0]  # B x 2048 x 7 x 7
             cam = torch.einsum("c,bchw->bhw", w, fmap)
             a = torch.relu(cam)
             a = a / (a.flatten(1).max(1).values[:, None, None] + 1e-8)
-            pooled = lambda wt: (fmap * wt[:, None]).flatten(2).sum(2) / (wt.flatten(1).sum(1)[:, None] + 1e-8)  # noqa: E731
-            f_les, f_aro = pooled(a), pooled(1 - a)
+            f_les, f_aro = _pooled(fmap, a), _pooled(fmap, 1 - a)
             contrast = 1 - torch.nn.functional.cosine_similarity(f_les, f_aro, dim=1)
             gap = (f_les - f_aro) @ w
             p = torch.softmax(logits, 1)[:, cancer_idx].clamp(1e-6, 1 - 1e-6)
             for i in range(len(batch)):
-                rows.append([float(torch.log(p[i] / (1 - p[i]))), float(contrast[i]), float(gap[i]),
-                             float(a[i].max() - a[i].mean()), float((a[i] > 0.5).float().mean())])
+                rows.append(
+                    [
+                        float(torch.log(p[i] / (1 - p[i]))),
+                        float(contrast[i]),
+                        float(gap[i]),
+                        float(a[i].max() - a[i].mean()),
+                        float((a[i] > 0.5).float().mean()),
+                    ]
+                )
     finally:
         hook.remove()
     return np.array(rows)
@@ -92,29 +102,48 @@ def main():
 
     val_im, val_y = labelled(DATA / "case_split_fixed" / "val")
     test_im, test_y = labelled(DATA / "kaggle_split_fixed" / "test")
-    hold = [st.open_rgb(DATA / "case_split" / "holdout" / r["filename"])
-            for r in csv.DictReader(open(DATA / "case_split" / "holdout" / "manifest.csv"))]
+    hold = [
+        st.open_rgb(DATA / "case_split" / "holdout" / r["filename"])
+        for r in csv.DictReader(open(DATA / "case_split" / "holdout" / "manifest.csv"))
+    ]
     ext = DATA / "external" / "olp_synthesis" / "extracted" / "data"
     cheek = [st.open_rgb(p) for p in sorted((ext / "negative").glob("*"))]
     olp = [st.open_rgb(p) for p in sorted((ext / "lesion_img").glob("*"))]
-    zoomed = [st.center_crop(im, 0.4) for im, y in zip(test_im, test_y) if not y]
+    zoomed = [st.center_crop(im, 0.4) for im, y in zip(test_im, test_y, strict=False) if not y]
 
-    X = {k: describe(bundle, ims) for k, ims in
-         [("val", val_im), ("test", test_im), ("hold", hold), ("cheek", cheek), ("olp", olp), ("zoom", zoomed)]}
+    X = {
+        k: describe(bundle, ims)
+        for k, ims in [
+            ("val", val_im),
+            ("test", test_im),
+            ("hold", hold),
+            ("cheek", cheek),
+            ("olp", olp),
+            ("zoom", zoomed),
+        ]
+    }
 
     scaler = StandardScaler().fit(X["val"])
     head = LogisticRegression(C=1.0, class_weight="balanced", max_iter=2000).fit(scaler.transform(X["val"]), val_y)
     new = {k: head.decision_function(scaler.transform(v)) for k, v in X.items()}
     old = {k: v[:, 0] for k, v in X.items()}  # the model's own logit
 
-    out = {"coefficients": dict(zip(FEATURES, map(float, head.coef_[0]))),
-           "auc": {"validation_model": float(roc_auc_score(val_y, old["val"])),
-                   "test_model": float(roc_auc_score(test_y, old["test"])),
-                   "test_self_reference": float(roc_auc_score(test_y, new["test"])),
-                   "test_contrast_alone": float(roc_auc_score(test_y, X["test"][:, 1]))}}
+    out = {
+        "coefficients": dict(zip(FEATURES, map(float, head.coef_[0]), strict=False)),
+        "auc": {
+            "validation_model": float(roc_auc_score(val_y, old["val"])),
+            "test_model": float(roc_auc_score(test_y, old["test"])),
+            "test_self_reference": float(roc_auc_score(test_y, new["test"])),
+            "test_contrast_alone": float(roc_auc_score(test_y, X["test"][:, 1])),
+        },
+    }
     print("coefficients:", {k: round(v, 2) for k, v in out["coefficients"].items()})
-    print("AUC  model alone: val %.3f test %.3f | self-reference: test %.3f | lesion-vs-surround contrast alone: test %.3f" % (
-        out["auc"]["validation_model"], out["auc"]["test_model"], out["auc"]["test_self_reference"], out["auc"]["test_contrast_alone"]))
+    auc = out["auc"]
+    print(
+        f"AUC  model alone: val {auc['validation_model']:.3f} test {auc['test_model']:.3f} | "
+        f"self-reference: test {auc['test_self_reference']:.3f} | "
+        f"lesion-vs-surround contrast alone: test {auc['test_contrast_alone']:.3f}"
+    )
 
     out["operating_points"] = {}
     for sens in (0.85, 0.90, 0.95):
@@ -133,9 +162,13 @@ def main():
         out["operating_points"][f"val_sensitivity_{sens}"] = row
         print(f"\n-- operating point: {sens:.0%} of validation cancers caught")
         for name, r in row.items():
-            print(f"   {name:15s} test sens {r['test_sensitivity']:.3f} spec {r['test_specificity']:.3f} | client dysplasia flagged "
-                  f"{r['client_dysplasia_flagged']:.3f} | zoomed healthy {r['healthy_zoomed_flagged']:.3f} | "
-                  f"healthy cheek {r['external_healthy_cheek_flagged']} | lichen planus {r['external_lichen_planus_flagged']}")
+            print(
+                f"   {name:15s} test sens {r['test_sensitivity']:.3f} spec {r['test_specificity']:.3f} | "
+                f"client dysplasia flagged {r['client_dysplasia_flagged']:.3f} | "
+                f"zoomed healthy {r['healthy_zoomed_flagged']:.3f} | "
+                f"healthy cheek {r['external_healthy_cheek_flagged']} | "
+                f"lichen planus {r['external_lichen_planus_flagged']}"
+            )
     (ML_DIR / "artifacts" / "self_reference_experiment.json").write_text(json.dumps(out, indent=2))
 
 

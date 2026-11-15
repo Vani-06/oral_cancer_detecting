@@ -20,7 +20,6 @@ Usage:
 """
 
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -53,8 +52,9 @@ def groups_by_similarity(thumbs, thr=0.97):
             parent[i] = parent[parent[i]]
             i = parent[i]
         return i
+
     S = thumbs @ thumbs.T
-    for i, j in zip(*np.where(np.triu(S, 1) > thr)):
+    for i, j in zip(*np.where(np.triu(S, 1) > thr), strict=False):
         parent[find(i)] = find(j)
     return np.array([find(i) for i in range(len(thumbs))])
 
@@ -63,7 +63,7 @@ def groups_by_similarity(thumbs, thr=0.97):
 def embed(model, tf, images):
     out = []
     for i in range(0, len(images), 32):
-        out.append(model(torch.stack([tf(im) for im in images[i:i + 32]])))
+        out.append(model(torch.stack([tf(im) for im in images[i : i + 32]])))
     f = torch.cat(out).numpy()
     return f / np.linalg.norm(f, axis=1, keepdims=True)
 
@@ -89,8 +89,16 @@ def evaluate(X, y, groups, seeds=5, augmented=None):
         p = clf.predict_proba(X[te])[:, 1]
         accs.append(accuracy_score(y[te], p >= 0.5))
         aucs.append(roc_auc_score(y[te], p))
-    r = lambda v: {"mean": float(np.mean(v)), "sd": float(np.std(v, ddof=1)), "min": float(np.min(v)), "max": float(np.max(v))}  # noqa: E731
-    return {"accuracy": r(accs), "roc_auc": r(aucs)}
+
+    def summary(v):
+        return {
+            "mean": float(np.mean(v)),
+            "sd": float(np.std(v, ddof=1)),
+            "min": float(np.min(v)),
+            "max": float(np.max(v)),
+        }
+
+    return {"accuracy": summary(accs), "roc_auc": summary(aucs)}
 
 
 def main():
@@ -105,16 +113,27 @@ def main():
     benign = np.stack([thumb(Image.open(p).convert("RGB")) for p in sorted(MENDELEY_BENIGN.iterdir())])
     relabel = y & ((th @ benign.T).max(1) > 0.97)
     y_fixed = y & ~relabel
-    print(f"{len(y)} photos, {y.sum()} labelled Cancer; {len(set(dup_groups))} distinct after grouping duplicates; "
-          f"{relabel.sum()} 'Cancer' photos are benign lesions in the original source", flush=True)
+    print(
+        f"{len(y)} photos, {y.sum()} labelled Cancer; {len(set(dup_groups))} distinct after grouping duplicates; "
+        f"{relabel.sum()} 'Cancer' photos are benign lesions in the original source",
+        flush=True,
+    )
 
     model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2).eval()
     model.fc = torch.nn.Identity()
-    tf = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor(),
-                             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+    tf = transforms.Compose(
+        [
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        ]
+    )
     X = embed(model, tf, images)
-    aug_images = [f(im) for im in images for f in (lambda i: i, ImageOps.mirror,
-                                                     lambda i: i.rotate(90, expand=True), lambda i: i.rotate(180))]
+    aug_images = [
+        f(im)
+        for im in images
+        for f in (lambda i: i, ImageOps.mirror, lambda i: i.rotate(90, expand=True), lambda i: i.rotate(180))
+    ]
     Xa = embed(model, tf, aug_images)
     ya = np.repeat(y, 4)
 
@@ -124,16 +143,21 @@ def main():
         "B_random_split_duplicates_kept_original_labels": evaluate(X, y, singletons),
         "C_duplicates_grouped_original_labels": evaluate(X, y, dup_groups),
         "D_duplicates_grouped_corrected_labels": evaluate(X, y_fixed, dup_groups),
-        # One factor at a time, on the same 5 split seeds (review item 34):
-        "E_augment_then_random_split_corrected_labels": evaluate(X, y_fixed, singletons, augmented=(Xa, np.repeat(y_fixed, 4))),
+        # One factor at a time, on the same 5 split seeds:
+        "E_augment_then_random_split_corrected_labels": evaluate(
+            X, y_fixed, singletons, augmented=(Xa, np.repeat(y_fixed, 4))
+        ),
         "F_random_split_duplicates_kept_corrected_labels": evaluate(X, y_fixed, singletons),
-        "photos": int(len(y)), "distinct_after_dedup": int(len(set(dup_groups))),
+        "photos": int(len(y)),
+        "distinct_after_dedup": int(len(set(dup_groups))),
         "benign_labelled_cancer": int(relabel.sum()),
     }
     for k, v in out.items():
         if isinstance(v, dict):
-            print(f"{k:50s} accuracy {v['accuracy']['mean']:.3f} (SD {v['accuracy']['sd']:.3f})  "
-                  f"AUC {v['roc_auc']['mean']:.3f} (SD {v['roc_auc']['sd']:.3f})")
+            print(
+                f"{k:50s} accuracy {v['accuracy']['mean']:.3f} (SD {v['accuracy']['sd']:.3f})  "
+                f"AUC {v['roc_auc']['mean']:.3f} (SD {v['roc_auc']['sd']:.3f})"
+            )
     (ML_DIR / "artifacts" / "leakage_experiment.json").write_text(json.dumps(out, indent=2))
 
 

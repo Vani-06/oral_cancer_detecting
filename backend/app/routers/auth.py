@@ -119,6 +119,7 @@ def my_audit_events(user: User = Depends(get_current_user), db: Session = Depend
 
 # --- two-factor sign-in ---
 
+
 @router.post("/mfa/setup", response_model=MfaSetupResponse)
 def mfa_setup(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
@@ -129,8 +130,9 @@ def mfa_setup(user: User = Depends(get_current_user), db: Session = Depends(get_
 
 
 @router.post("/mfa/enable", response_model=UserResponse)
-def mfa_enable(payload: MfaCode, request: Request, user: User = Depends(get_current_user),
-               db: Session = Depends(get_db)):
+def mfa_enable(
+    payload: MfaCode, request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
     try:
         AuthService(db).enable_mfa(user, payload.code)
     except ValueError as exc:
@@ -140,8 +142,9 @@ def mfa_enable(payload: MfaCode, request: Request, user: User = Depends(get_curr
 
 
 @router.post("/mfa/disable", response_model=UserResponse)
-def mfa_disable(payload: MfaDisable, request: Request, user: User = Depends(get_current_user),
-                db: Session = Depends(get_db)):
+def mfa_disable(
+    payload: MfaDisable, request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
     try:
         AuthService(db).disable_mfa(user, payload.code, payload.password)
     except ValueError as exc:
@@ -151,6 +154,7 @@ def mfa_disable(payload: MfaDisable, request: Request, user: User = Depends(get_
 
 
 # --- password reset ---
+
 
 @router.post("/password-reset/request", status_code=status.HTTP_202_ACCEPTED)
 def password_reset_request(payload: PasswordResetRequest, request: Request, db: Session = Depends(get_db)):
@@ -162,9 +166,12 @@ def password_reset_request(payload: PasswordResetRequest, request: Request, db: 
     if created is not None:
         user, token = created
         link = f"{settings.APP_URL}/reset-password?token={token}"
-        send_email(user.email, "OralSentinel password reset",
-                   f"Use this link within {settings.PASSWORD_RESET_MINUTES} minutes to set a new password:\n\n"
-                   f"{link}\n\nIf you did not ask for this, ignore this email.")
+        send_email(
+            user.email,
+            "OralSentinel password reset",
+            f"Use this link within {settings.PASSWORD_RESET_MINUTES} minutes to set a new password:\n\n"
+            f"{link}\n\nIf you did not ask for this, ignore this email.",
+        )
         audit.record(db, "password_reset_requested", user_id=user.id, request=request)
     # Same answer whether or not the email exists, so accounts cannot be probed.
     return {"detail": "If that email has an account, a reset link has been sent."}

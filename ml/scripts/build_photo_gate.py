@@ -45,7 +45,7 @@ def features(model, paths):
     out = []
     for i in range(0, len(paths), 16):
         batch = []
-        for p in paths[i:i + 16]:
+        for p in paths[i : i + 16]:
             with Image.open(p) as im:
                 batch.append(tf(ImageOps.exif_transpose(im).convert("RGB")))
         out.append(model(torch.stack(batch)))
@@ -60,24 +60,31 @@ def main():
 
     model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2).eval()
     model.fc = torch.nn.Identity()
-    paths = {s: sorted(p for p in (SPLIT_DIR / s).rglob("*") if p.suffix.lower() in IMAGE_EXTS) for s in ("train", "val")}
+    paths = {
+        s: sorted(p for p in (SPLIT_DIR / s).rglob("*") if p.suffix.lower() in IMAGE_EXTS) for s in ("train", "val")
+    }
     bank = features(model, paths["train"])
     val = features(model, paths["val"])
     val_dist = 1 - (val @ bank.T).topk(K, dim=1).values.mean(1)
     threshold = float(np.percentile(val_dist.numpy(), args.percentile))
-    print(f"bank {len(bank)} photos, threshold {threshold:.4f} ({args.percentile}th pct of {len(val)} validation photos)")
+    print(
+        f"bank {len(bank)} photos, threshold {threshold:.4f} ({args.percentile}th pct of {len(val)} validation photos)"
+    )
 
     out = ML_DIR / "artifacts" / "oral_photo_gate_v1.pt"
-    torch.save({
-        "backbone_state_dict": model.state_dict(),
-        "bank": bank.half(),
-        "k": K,
-        "threshold": threshold,
-        "img_size": SIZE,
-        "mean": MEAN,
-        "std": STD,
-        "percentile": args.percentile,
-    }, out)
+    torch.save(
+        {
+            "backbone_state_dict": model.state_dict(),
+            "bank": bank.half(),
+            "k": K,
+            "threshold": threshold,
+            "img_size": SIZE,
+            "mean": MEAN,
+            "std": STD,
+            "percentile": args.percentile,
+        },
+        out,
+    )
     print("wrote", out)
 
 

@@ -43,7 +43,9 @@ def main() -> None:
     shutil.copytree(ROOT / "backend" / "alembic", out / "alembic", ignore=ignore)
     shutil.copy(ROOT / "backend" / "alembic.ini", out / "alembic.ini")
     reqs = (ROOT / "backend" / "requirements.txt").read_text(encoding="utf-8").rstrip("\n")
-    (out / "requirements.txt").write_text(reqs + "\n" + "\n".join(EXTRA_REQUIREMENTS) + "\n", encoding="utf-8", newline="\n")
+    (out / "requirements.txt").write_text(
+        reqs + "\n" + "\n".join(EXTRA_REQUIREMENTS) + "\n", encoding="utf-8", newline="\n"
+    )
     for name in ("Dockerfile", "entrypoint.sh", "fetch_models.py", "README.md"):
         text = (HERE / name).read_text(encoding="utf-8")
         (out / name).write_text(text, encoding="utf-8", newline="\n")

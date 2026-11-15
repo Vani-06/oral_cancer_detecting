@@ -51,9 +51,7 @@ class PredictionService:
         extension = Path(file.filename).suffix.lower()
         if extension not in settings.ALLOWED_EXTENSIONS:
             allowed_types = ", ".join(sorted(settings.ALLOWED_EXTENSIONS))
-            raise ValueError(
-                f"Unsupported file type '{extension}'. Allowed types: {allowed_types}"
-            )
+            raise ValueError(f"Unsupported file type '{extension}'. Allowed types: {allowed_types}")
 
         if file.content_type and not file.content_type.startswith("image/"):
             raise ValueError("The uploaded file must be an image.")
@@ -63,9 +61,7 @@ class PredictionService:
         file_size = file.file.tell()
         file.file.seek(current_position)
         if file_size > settings.max_file_size_bytes:
-            raise ValueError(
-                f"File too large. Maximum allowed size is {settings.MAX_FILE_SIZE_MB} MB."
-            )
+            raise ValueError(f"File too large. Maximum allowed size is {settings.MAX_FILE_SIZE_MB} MB.")
 
     def save_image(self, file: UploadFile) -> str:
         self._validate_file(file)
@@ -84,9 +80,7 @@ class PredictionService:
         # file pointer does not expose the complete content length.
         if destination.stat().st_size > settings.max_file_size_bytes:
             destination.unlink(missing_ok=True)
-            raise ValueError(
-                f"File too large. Maximum allowed size is {settings.MAX_FILE_SIZE_MB} MB."
-            )
+            raise ValueError(f"File too large. Maximum allowed size is {settings.MAX_FILE_SIZE_MB} MB.")
 
         # The extension and Content-Type are client-supplied; confirm the bytes
         # are really an image before storing them or handing them to the model.
@@ -126,8 +120,7 @@ class PredictionService:
         # Refused before anything is recorded: a result for an image that is
         # not an oral photo would be meaningless, whichever label it got.
         # Content first (is it a mouth at all?), then quality (can it be analysed?).
-        problem = next((message for path, message in checks
-                        if not inference_service.looks_like_oral_photo(path)), None)
+        problem = next((message for path, message in checks if not inference_service.looks_like_oral_photo(path)), None)
         for index, (path, _) in enumerate(checks):
             if problem is not None:
                 break
@@ -206,17 +199,26 @@ class PredictionService:
         self.db.refresh(prediction)
         return prediction
 
-    def add_feedback(self, prediction: Prediction, user: User, kind: str,
-                     actual_diagnosis: str | None, comment: str | None) -> ResultFeedback:
-        feedback = ResultFeedback(prediction_id=prediction.prediction_id, user_id=user.id, kind=kind,
-                                  actual_diagnosis=actual_diagnosis or None, comment=comment or None)
+    def add_feedback(
+        self, prediction: Prediction, user: User, kind: str, actual_diagnosis: str | None, comment: str | None
+    ) -> ResultFeedback:
+        feedback = ResultFeedback(
+            prediction_id=prediction.prediction_id,
+            user_id=user.id,
+            kind=kind,
+            actual_diagnosis=actual_diagnosis or None,
+            comment=comment or None,
+        )
         self.db.add(feedback)
         self.db.commit()
         return feedback
 
     def feedback_count(self, prediction: Prediction) -> int:
-        return len(self.db.scalars(
-            select(ResultFeedback.id).where(ResultFeedback.prediction_id == prediction.prediction_id)).all())
+        return len(
+            self.db.scalars(
+                select(ResultFeedback.id).where(ResultFeedback.prediction_id == prediction.prediction_id)
+            ).all()
+        )
 
     def delete_prediction(self, prediction: Prediction) -> None:
         """Deletes the analysis, its photos, heatmap and report."""

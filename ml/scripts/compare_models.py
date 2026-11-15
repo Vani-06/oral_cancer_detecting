@@ -34,25 +34,36 @@ def labelled(root):
 def main():
     val_im, val_y = labelled(DATA / "case_split_fixed" / "val")
     test_im, test_y = labelled(DATA / "kaggle_split_fixed" / "test")
-    holdout = [st.open_rgb(DATA / "case_split" / "holdout" / r["filename"])
-               for r in csv.DictReader(open(DATA / "case_split" / "holdout" / "manifest.csv"))]
-    zoomed = [st.center_crop(im, 0.4) for im, y in zip(test_im, test_y) if not y]
+    holdout = [
+        st.open_rgb(DATA / "case_split" / "holdout" / r["filename"])
+        for r in csv.DictReader(open(DATA / "case_split" / "holdout" / "manifest.csv"))
+    ]
+    zoomed = [st.center_crop(im, 0.4) for im, y in zip(test_im, test_y, strict=False) if not y]
     ext = DATA / "external" / "olp_synthesis" / "extracted" / "data"
     cheek = [st.open_rgb(p) for p in sorted((ext / "negative").glob("*"))]
     olp = [st.open_rgb(p) for p in sorted((ext / "lesion_img").glob("*"))]
 
-    print(f"{'model':6s} | {'VALIDATION caught / false':>26s} | {'TEST caught':>13s} {'healthy flagged':>16s} | "
-          f"{'client flagged':>14s} | {'zoomed healthy':>14s} | {'healthy cheek':>13s} {'lichen planus':>13s}")
+    print(
+        f"{'model':6s} | {'VALIDATION caught / false':>26s} | {'TEST caught':>13s} {'healthy flagged':>16s} | "
+        f"{'client flagged':>14s} | {'zoomed healthy':>14s} | {'healthy cheek':>13s} {'lichen planus':>13s}"
+    )
     for name in sys.argv[1:]:
         # "v5+v7" averages the checkpoints' P(Cancer).
         models = [st.load_model(ML_DIR / "artifacts" / f"resnet50_oral_cancer_{n}.pt") for n in name.split("+")]
-        call = lambda ims: np.mean([st.run(*m, ims)[0] for m in models], 0) >= 0.5  # noqa: E731
+
+        def call(ims, models=models):
+            return np.mean([st.run(*m, ims)[0] for m in models], 0) >= 0.5
+
         v, t = call(val_im), call(test_im)
         h, z, c, o = call(holdout), call(zoomed), call(cheek), call(olp)
-        print(f"{name:6s} | {v[val_y].mean():12.1%} / {v[~val_y].mean():6.1%}     | "
-              f"{t[test_y].mean():6.1%} ({t[test_y].sum()}/{test_y.sum()}) {t[~test_y].mean():9.1%} ({t[~test_y].sum()}/{(~test_y).sum()}) | "
-              f"{h.mean():6.1%} ({h.sum()}/{len(h)}) | {z.mean():6.1%} ({z.sum()}/{len(z)}) | "
-              f"{c.sum()}/{len(c)} flagged    {o.sum()}/{len(o)} flagged", flush=True)
+        print(
+            f"{name:6s} | {v[val_y].mean():12.1%} / {v[~val_y].mean():6.1%}     | "
+            f"{t[test_y].mean():6.1%} ({t[test_y].sum()}/{test_y.sum()}) "
+            f"{t[~test_y].mean():9.1%} ({t[~test_y].sum()}/{(~test_y).sum()}) | "
+            f"{h.mean():6.1%} ({h.sum()}/{len(h)}) | {z.mean():6.1%} ({z.sum()}/{len(z)}) | "
+            f"{c.sum()}/{len(c)} flagged    {o.sum()}/{len(o)} flagged",
+            flush=True,
+        )
 
 
 if __name__ == "__main__":

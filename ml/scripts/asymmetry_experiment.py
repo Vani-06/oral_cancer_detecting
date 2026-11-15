@@ -43,7 +43,7 @@ def halves(im):
 
 
 def asymmetry(model, images):
-    lefts, rights = zip(*(halves(im) for im in images))
+    lefts, rights = zip(*(halves(im) for im in images), strict=False)
     _, fl = st.run(*model, list(lefts))
     _, fr = st.run(*model, list(rights))
     fl = fl / np.linalg.norm(fl, axis=1, keepdims=True)
@@ -63,7 +63,10 @@ def main():
     model = st.load_model(Path(args.checkpoint))
     out = {}
     feats = {}
-    for split, root in [("validation", DATA / "case_split_fixed" / "val"), ("test", DATA / "kaggle_split_fixed" / "test")]:
+    for split, root in [
+        ("validation", DATA / "case_split_fixed" / "val"),
+        ("test", DATA / "kaggle_split_fixed" / "test"),
+    ]:
         ims, y = labelled(root)
         p, _ = st.run(*model, ims)
         a = asymmetry(model, ims)

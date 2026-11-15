@@ -1,5 +1,5 @@
 """
-Risk-controlled triage with a statistical guarantee (CONFIDENTIAL).
+Risk-controlled triage: thresholds set by conformal risk control.
 
 Score per photo: mean P(cancer) over the 9 diagnosis-preserving edits
 (the acquisition-consensus score). Three outcomes:
@@ -51,8 +51,9 @@ def apply_temperature(p, t):
 
 def consensus_scores(model, images, temperature=1.0):
     """Mean calibrated P(cancer) over the 9 edits -- what the app computes."""
-    return np.mean([apply_temperature(st.run(*model, [e(im) for im in images])[0], temperature)
-                    for e in STABILITY_EDITS], 0)
+    return np.mean(
+        [apply_temperature(st.run(*model, [e(im) for im in images])[0], temperature) for e in STABILITY_EDITS], 0
+    )
 
 
 def clopper_pearson_upper(k, n, delta):
@@ -122,11 +123,20 @@ def main():
     sv = consensus_scores(model, val_im, args.temperature)
     stt = consensus_scores(model, test_im, args.temperature)
     hi = lam_hi_for(sv[~val_y], args.beta)
-    out = {"checkpoint": Path(args.checkpoint).name, "temperature": args.temperature,
-           "alpha": args.alpha, "delta": args.delta, "beta": args.beta, "lam_hi": hi,
-           "calibration_cancers": int(val_y.sum()), "test_cancers": int(test_y.sum())}
-    for name, lo in [("expected_guarantee_CRC", lam_lo_crc(sv[val_y], args.alpha)),
-                     ("high_probability_guarantee", lam_lo_hp(sv[val_y], args.alpha, args.delta))]:
+    out = {
+        "checkpoint": Path(args.checkpoint).name,
+        "temperature": args.temperature,
+        "alpha": args.alpha,
+        "delta": args.delta,
+        "beta": args.beta,
+        "lam_hi": hi,
+        "calibration_cancers": int(val_y.sum()),
+        "test_cancers": int(test_y.sum()),
+    }
+    for name, lo in [
+        ("expected_guarantee_CRC", lam_lo_crc(sv[val_y], args.alpha)),
+        ("high_probability_guarantee", lam_lo_hp(sv[val_y], args.alpha, args.delta)),
+    ]:
         out[name] = {"lam_lo": lo, "validation": summarise(sv, val_y, lo, hi), "test": summarise(stt, test_y, lo, hi)}
     # Smallest alpha the high-probability version can certify with this many calibration cancers.
     out["min_certifiable_alpha_at_delta"] = clopper_pearson_upper(0, int(val_y.sum()), args.delta)

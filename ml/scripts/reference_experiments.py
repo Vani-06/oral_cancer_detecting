@@ -96,6 +96,7 @@ def acquisition_shift(rng):
         im = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
         im = ImageEnhance.Brightness(im).enhance(bright)
         return ImageEnhance.Color(im).enhance(sat)
+
     return apply
 
 
@@ -161,8 +162,10 @@ def main():
 
     val_im, val_y = labelled(DATA / "case_split_fixed" / "val")
     test_im, test_y = labelled(DATA / "kaggle_split_fixed" / "test")
-    hold = [st.open_rgb(DATA / "case_split" / "holdout" / r["filename"])
-            for r in csv.DictReader(open(DATA / "case_split" / "holdout" / "manifest.csv"))]
+    hold = [
+        st.open_rgb(DATA / "case_split" / "holdout" / r["filename"])
+        for r in csv.DictReader(open(DATA / "case_split" / "holdout" / "manifest.csv"))
+    ]
     ext = DATA / "external" / "olp_synthesis" / "extracted" / "data"
     cheek = [st.open_rgb(p) for p in sorted((ext / "negative").glob("*"))]
     olp = [st.open_rgb(p) for p in sorted((ext / "lesion_img").glob("*"))]
@@ -174,15 +177,19 @@ def main():
     results["thresholds"] = {"lo": lo, "hi": hi, "edits": len(STABILITY_EDITS), "target": args.target}
     results["validation"] = report("validation (chosen here)", vv, val_y, lo, hi)
     results["test"] = report("Kaggle test (corrected)", votes(model, test_im), test_y, lo, hi)
-    results["client_holdout"] = report("client dysplasia, no cancer", votes(model, hold), np.zeros(len(hold), bool), lo, hi)
-    results["external_cheek"] = report("external healthy cheek", votes(model, cheek), np.zeros(len(cheek), bool), lo, hi)
+    results["client_holdout"] = report(
+        "client dysplasia, no cancer", votes(model, hold), np.zeros(len(hold), bool), lo, hi
+    )
+    results["external_cheek"] = report(
+        "external healthy cheek", votes(model, cheek), np.zeros(len(cheek), bool), lo, hi
+    )
     results["external_olp"] = report("external lichen planus", votes(model, olp), np.zeros(len(olp), bool), lo, hi)
 
     print("\nB. reference colour normalisation under a shared camera/light shift (simulated)")
     train_healthy = [st.open_rgb(p) for p in sorted((DATA / "case_split_fixed" / "train" / "Non-Cancer").glob("*"))]
     stats = [lab_stats(im) for im in train_healthy]
     pop = (np.mean([s[0] for s in stats], 0), np.mean([s[1] for s in stats], 0))
-    refs = [im for im, y in zip(val_im, val_y) if not y]
+    refs = [im for im, y in zip(val_im, val_y, strict=False) if not y]
     sim = {}
     for split, ims, ys in [("validation", val_im, val_y), ("test", test_im, test_y)]:
         rng = np.random.default_rng(0)
@@ -199,15 +206,24 @@ def main():
         p1 = st.run(*model, shifted)[0] >= 0.5
         p2 = st.run(*model, normed)[0] >= 0.5
         p3 = st.run(*model, plain_normed)[0] >= 0.5
-        row = {f: float(((p == ys).mean())) for f, p in
-               [("original", p0), ("shifted", p1), ("shifted_reference_normalised", p2), ("shifted_self_normalised", p3)]}
+        row = {
+            f: float((p == ys).mean())
+            for f, p in [
+                ("original", p0),
+                ("shifted", p1),
+                ("shifted_reference_normalised", p2),
+                ("shifted_self_normalised", p3),
+            ]
+        }
         row["answers_changed_by_shift"] = float((p1 != p0).mean())
         row["answers_changed_after_reference_normalisation"] = float((p2 != p0).mean())
         sim[split] = row
-        print(f"  {split:10s} accuracy: original {row['original']:.3f} | shifted {row['shifted']:.3f} | "
-              f"+ reference normalisation {row['shifted_reference_normalised']:.3f} | "
-              f"+ photo's own statistics {row['shifted_self_normalised']:.3f} | answers changed by shift "
-              f"{row['answers_changed_by_shift']:.3f} -> {row['answers_changed_after_reference_normalisation']:.3f}")
+        print(
+            f"  {split:10s} accuracy: original {row['original']:.3f} | shifted {row['shifted']:.3f} | "
+            f"+ reference normalisation {row['shifted_reference_normalised']:.3f} | "
+            f"+ photo's own statistics {row['shifted_self_normalised']:.3f} | answers changed by shift "
+            f"{row['answers_changed_by_shift']:.3f} -> {row['answers_changed_after_reference_normalisation']:.3f}"
+        )
     results["reference_normalisation_simulation"] = sim
     results["population_lab_stats"] = {"mean": pop[0].tolist(), "std": pop[1].tolist()}
     (ML_DIR / "artifacts" / "reference_experiments.json").write_text(json.dumps(results, indent=2))

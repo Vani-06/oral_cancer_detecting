@@ -22,8 +22,10 @@ EXPECTED = [
 ]
 
 
-@pytest.mark.skipif(not all(p.is_file() for p in MODELS.values()) or not PHOTOS.is_dir(),
-                    reason="trained models or held-out photos not present")
+@pytest.mark.skipif(
+    not all(p.is_file() for p in MODELS.values()) or not PHOTOS.is_dir(),
+    reason="trained models or held-out photos not present",
+)
 def test_fixed_photos_give_the_recorded_results(monkeypatch):
     from app.core.config import settings
     from app.services import inference_service as inference_module

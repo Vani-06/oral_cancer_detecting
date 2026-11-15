@@ -23,7 +23,7 @@ def code_at(secret: str, counter: int) -> str:
     key = base64.b32decode(secret.upper() + "=" * (-len(secret) % 8))
     digest = hmac.new(key, struct.pack(">Q", counter), hashlib.sha1).digest()
     offset = digest[-1] & 0x0F
-    value = struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF
+    value = struct.unpack(">I", digest[offset : offset + 4])[0] & 0x7FFFFFFF
     return str(value % 10**DIGITS).zfill(DIGITS)
 
 
@@ -38,5 +38,7 @@ def verify(secret: str, code: str, now: float | None = None, window: int = 1) ->
 
 
 def provisioning_uri(secret: str, account: str, issuer: str = "OralSentinel") -> str:
-    return (f"otpauth://totp/{quote(issuer)}:{quote(account)}"
-            f"?secret={secret}&issuer={quote(issuer)}&digits={DIGITS}&period={STEP_SECONDS}")
+    return (
+        f"otpauth://totp/{quote(issuer)}:{quote(account)}"
+        f"?secret={secret}&issuer={quote(issuer)}&digits={DIGITS}&period={STEP_SECONDS}"
+    )

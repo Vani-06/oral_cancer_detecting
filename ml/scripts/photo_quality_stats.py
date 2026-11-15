@@ -15,13 +15,16 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 from gate_ood_test import DEGRADE, ROOT, folder  # noqa: E402
+
 from app.services.photo_quality import measure  # noqa: E402
 
 
 def summary(images):
     m = [measure(im) for im in images]
-    return {k: {q: round(float(np.percentile([x[k] for x in m], q)), 4) for q in (0, 1, 2, 5, 50, 95, 99, 100)}
-            for k in m[0]}
+    return {
+        k: {q: round(float(np.percentile([x[k] for x in m], q)), 4) for q in (0, 1, 2, 5, 50, 95, 99, 100)}
+        for k in m[0]
+    }
 
 
 def main():

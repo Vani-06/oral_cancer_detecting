@@ -62,15 +62,11 @@ def extract_row_to_media(xlsx_path: Path) -> dict[int, str]:
         rels_xml = z.read("xl/drawings/_rels/drawing1.xml.rels").decode("utf-8")
         drawing_xml = z.read("xl/drawings/drawing1.xml").decode("utf-8")
 
-    rid_to_file = dict(
-        re.findall(r'Id="(rId\d+)"[^>]*Target="\.\./media/([^"]+)"', rels_xml)
-    )
+    rid_to_file = dict(re.findall(r'Id="(rId\d+)"[^>]*Target="\.\./media/([^"]+)"', rels_xml))
 
     root = ET.fromstring(drawing_xml)
     row_to_media: dict[int, str] = {}
-    for anchor in root.findall("xdr:oneCellAnchor", NS) + root.findall(
-        "xdr:twoCellAnchor", NS
-    ):
+    for anchor in root.findall("xdr:oneCellAnchor", NS) + root.findall("xdr:twoCellAnchor", NS):
         frm = anchor.find("xdr:from", NS)
         row = int(frm.find("xdr:row", NS).text) + 1  # 0-indexed -> 1-indexed sheet row
         col = int(frm.find("xdr:col", NS).text)
@@ -79,9 +75,7 @@ def extract_row_to_media(xlsx_path: Path) -> dict[int, str]:
         blip = anchor.find(".//a:blip", NS)
         if blip is None:
             continue
-        rid = blip.get(
-            "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
-        )
+        rid = blip.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed")
         fname = rid_to_file.get(rid)
         if fname:
             row_to_media[row] = fname
@@ -128,11 +122,7 @@ def main() -> None:
     diagnoses = extract_row_diagnoses(xlsx_path, set(row_to_media.keys()))
 
     with zipfile.ZipFile(xlsx_path) as z:
-        media_bytes = {
-            name.rsplit("/", 1)[-1]: z.read(name)
-            for name in z.namelist()
-            if name.startswith("xl/media/")
-        }
+        media_bytes = {name.rsplit("/", 1)[-1]: z.read(name) for name in z.namelist() if name.startswith("xl/media/")}
 
     manifest_rows = []
     label_counts = {"Cancer": 0, "Non-Cancer": 0}
