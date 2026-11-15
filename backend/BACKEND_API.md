@@ -1,214 +1,55 @@
-# oral cancer deep learning - backend API
+# Backend API
 
----
+FastAPI service. When `ENVIRONMENT` is not `production`, interactive docs with
+full request and response schemas are served at `/docs`.
 
-# Base URL
+Authentication is a bearer token from `/login` or `/register`:
+`Authorization: Bearer <token>`. Every `/predictions/*` and `/reports/*`
+endpoint returns only the signed-in clinician's own records (`404` otherwise).
 
-```
-http://localhost:8000
-```
+## Accounts
 
----
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/config/public` | Sign-up mode (`open`, `invite`, `domain`) and whether email password reset is available |
+| POST | `/register` | `email`, `password`, `full_name`, `confirms_professional_use: true`; `invite_code` when invite-only |
+| POST | `/login` | `email`, `password`; `mfa_code` when two-factor sign-in is on (`403` asks for it) |
+| GET | `/me` | Current user |
+| GET | `/me/audit` | The user's latest 200 access-log events |
+| POST | `/mfa/setup` | Returns a TOTP secret and `otpauth://` URI |
+| POST | `/mfa/enable` | `code` |
+| POST | `/mfa/disable` | `code`, `password` |
+| POST | `/password-reset/request` | `email`; always `202`, emails a one-time link if the account exists |
+| POST | `/password-reset/confirm` | `token`, `new_password` |
 
-# Health Check
+## Analyses
 
-Verifies that the backend is running.
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/predict` | Multipart: `file` (photo), `consent_confirmed=true`, optional `reference_file` and `metadata_json`. Returns the result immediately. |
+| GET | `/predictions` | The user's analyses, newest first |
+| GET | `/predictions/{id}` | One analysis: result, grade, follow-up, consent time, model version |
+| DELETE | `/predictions/{id}` | Deletes the analysis and its photos, heatmap and report |
+| PATCH | `/predictions/{id}/follow-up` | `status`: `needed`, `referred`, `retake_requested`, `closed`; optional `note` |
+| POST | `/predictions/{id}/feedback` | Report a wrong result: `kind`, optional `actual_diagnosis`, `comment` |
+| GET | `/predictions/{id}/image` | Lesion photo |
+| GET | `/predictions/{id}/reference-image` | Optional opposite-side photo |
+| GET | `/predictions/{id}/heatmap` | Grad-CAM overlay |
+| GET | `/reports/{id}` | PDF report, generated on first request |
 
-### Endpoint
+`POST /predict` returns `400` with a reason when the image is not a clinical
+oral photo or is too dark, washed out or blurred, `429` when the hourly limit
+is reached, and `503` while `ANALYSIS_PAUSED` is set.
 
-```http
-GET /
-```
+## Result fields
 
-### Response
+| Field | Values |
+|---|---|
+| `prediction` | `Cancer`, `Non-Cancer` (single-answer label) |
+| `assessment` | `cancer`, `inconclusive`, `no_cancer` (three-level triage) |
+| `dysplasia_grade` | `none`, `mild`, `moderate`, `severe` |
+| `model_version` | Model files, temperature and triage thresholds used |
 
-```json
-{
-    "status": "healthy"
-}
-```
+## Health
 
----
-
-# Upload Image for Prediction
-
-Uploads an oral lesion image to the backend. Currently, the backend only stores the image and returns a success response. ML inference will be integrated later.
-
-### Endpoint
-
-```http
-POST /predict
-```
-
-### Content-Type
-
-```
-multipart/form-data
-```
-
-### Request Body
-
-| Field | Type | Required | Description |
-|--------|------|----------|-------------|
-| file | Image File | Yes | Oral lesion image |
-
-### Current Response
-
-```json
-{
-    "filename": "3df9e5dc-f07b-4f66-bd72.jpg",
-    "status": "uploaded successfully"
-}
-```
-
-### Planned Response
-
-```json
-{
-    "prediction_id": 1,
-    "prediction": "Cancer",
-    "confidence": 0.96,
-    "heatmap_url": "/predictions/1/heatmap",
-    "pdf_url": "/reports/1.pdf"
-}
-```
-
-> **Frontend Note:** Design the prediction results page according to the **planned response**, even though the backend currently returns only the filename and status.
-
----
-
-# Current Backend Features
-
-- FastAPI project initialized
-- Swagger/OpenAPI documentation enabled
-- Health check endpoint
-- Image upload endpoint
-- Images saved locally on the server
-
----
-
-# Planned API Endpoints
-
-## Authentication
-
-```http
-POST /register
-POST /login
-GET /me
-```
-
----
-
-## Predictions
-
-```http
-POST /predict
-GET /predictions
-GET /predictions/{id}
-```
-
----
-
-## Reports
-
-```http
-GET /reports/{prediction_id}
-```
-
-Downloads the generated PDF report.
-
----
-
-# Planned Response Models
-
-## Prediction
-
-```json
-{
-    "prediction_id": 1,
-    "prediction": "Cancer",
-    "confidence": 0.96,
-    "heatmap_url": "/predictions/1/heatmap",
-    "pdf_url": "/reports/1.pdf"
-}
-```
-
----
-
-## Prediction History
-
-```json
-[
-    {
-        "prediction_id": 1,
-        "prediction": "Cancer",
-        "confidence": 0.96,
-        "created_at": "2026-08-03T18:25:41Z"
-    },
-    {
-        "prediction_id": 2,
-        "prediction": "Non-Cancer",
-        "confidence": 0.88,
-        "created_at": "2026-08-04T10:11:02Z"
-    }
-]
-```
-
----
-
-# Frontend Pages
-
-| Page | API |
-|------|-----|
-| Login | `/login` |
-| Dashboard | `/predictions` |
-| Upload Image | `/predict` |
-| Prediction Result | `/predict` |
-| Prediction History | `/predictions` |
-| Report Download | `/reports/{id}` |
-
----
-
-# Current Project Structure
-
-```text
-backend/
-│
-├── app/
-│   ├── __init__.py
-│   ├── main.py
-│   │
-│   ├── routers/
-│   │   ├── __init__.py
-│   │   └── prediction.py
-│   │
-│   └── uploads/
-│
-└── requirements.txt
-```
-
----
-
-# Upcoming Features
-
-- JWT Authentication
-- PostgreSQL Database
-- Prediction History
-- Machine Learning Inference
-- Explainability (Grad-CAM)
-- PDF Report Generation
-- Cloud Deployment
-
----
-
-# Notes for Frontend Development
-
-- Use **`multipart/form-data`** when uploading images.
-- Assume authentication endpoints will be available soon.
-- Design the prediction page based on the **planned response model**.
-- Prediction history should display:
-  - Uploaded image (thumbnail)
-  - Prediction
-  - Confidence
-  - Date & Time
-  - View Report button
+`GET /` and `GET /health` return `{"status": "healthy"}`.
