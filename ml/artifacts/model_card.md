@@ -465,3 +465,32 @@ photo check plus the quality check now applied before analysis
 
 Still untested: X-rays and photos of other body sites (no such images
 available locally).
+
+## Explanation-guided cascaded hybrid (xai_hybrid.py)
+
+Stage 1 v7 scores the whole photo; stage 2 Grad-CAM of v7 (cancer class,
+threshold 0.5 of peak, 15% margin, side at least 25% of the shorter side)
+selects the region; stage 3 a second ResNet-50 trained only on those crops
+(resnet50_oral_cancer_local_v1, best validation accuracy 0.874) scores it;
+stage 4 fuses p = 0.6 p_global + 0.4 p_local (weight chosen on validation
+AUC); stage 5 conformal thresholds set on validation (alpha 5%, beta 10%).
+Single-pass scores throughout (no 9-edit consensus).
+
+| | Global only (v7) | Hybrid |
+|---|---|---|
+| AUC validation | 0.943 | 0.948 |
+| AUC development test | 0.932 | 0.955 (paired bootstrap gain +0.023, 95% CI -0.002 to +0.054) |
+| AUC untouched set (second use) | 0.934 | 0.943 |
+| Sensitivity / specificity at 0.5, development test | 84.5% / 87.0% | 84.5% / 88.3% |
+| Sensitivity / specificity at 0.5, untouched set | 75.9% / 91.3% | 79.3% / 91.3% |
+| Triage, cancers called no cancer: development / untouched | 2/58, 2/29 | 2/58, 3/29 |
+| Zoomed-out test cancers caught | 42/58 | 40/58 |
+| Clinic held-out dysplasia called cancer | 5/39 | 7/39 |
+
+Grad-CAM faithfulness (58 test cancers): blurring the Grad-CAM region lowered
+P(cancer) by 0.46 on average, an equal-area random box by 0.07; the Grad-CAM
+region mattered more for 53 of 58 photos (91%).
+
+Conclusion: a small but consistent gain in ranking (AUC) on all three sets;
+no gain in triage safety; slightly more false alarms on clinic dysplasia
+photos. Not deployed in the app.
